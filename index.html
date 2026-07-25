@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meeting Report Generator — Timedoor Academy</title>
+  <meta name="description"
+    content="Generate meeting reports and daily student progress reports for Timedoor Academy classes. Export to PNG, PDF, or share via WhatsApp.">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+
+<body>
+
+  <nav class="topnav">
+    <img src="timedoor_logo_putih.png" class="topnav-logo" alt="Timedoor Academy">
+    <div class="topnav-divider"></div>
+    <h1>Meeting Report Generator</h1>
+  </nav>
+
+  <div style="max-width:1500px;margin:0 auto;">
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('manual')">✏️ Manual Report</button>
+      <button class="tab-btn" onclick="switchTab('auto')">⚡ Daily Auto Report</button>
+    </div>
+  </div>
+
+  <div class="app-layout">
+
+    <!-- TAB: MANUAL -->
+    <div id="tab-manual" class="tab-content active">
+      <aside class="sidebar">
+        <div class="card">
+          <div class="card-title">Class Information</div>
+          <div class="form-row">
+            <div class="form-group"><label>Class Name</label><input type="text" id="input-kelas" value="BGR-ADP-29"
+                oninput="updatePreview()"></div>
+            <div class="form-group"><label>Date</label><input type="date" id="input-tanggal" onchange="updatePreview()">
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Documentation Photos</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Photo 1</label>
+              <div class="photo-input-group">
+                <input type="file" id="input-photo1" accept="image/*" onchange="handlePhoto(event,'photo1')">
+                <button type="button" class="btn-del-photo" id="btndel-photo1" onclick="removePhoto('photo1')"
+                  title="Remove Photo" style="display:none;">✕</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Photo 2</label>
+              <div class="photo-input-group">
+                <input type="file" id="input-photo2" accept="image/*" onchange="handlePhoto(event,'photo2')">
+                <button type="button" class="btn-del-photo" id="btndel-photo2" onclick="removePhoto('photo2')"
+                  title="Remove Photo" style="display:none;">✕</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Student Data & Progress</div>
+          <div class="students-list" id="students-container"></div>
+          <button class="btn-add" onclick="addStudent()">+ Add Student</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Export & Share</div>
+          <div class="download-group">
+            <div class="download-row">
+              <button class="btn-dl btn-dl-png" id="btn-png" onclick="downloadPNG()">Download PNG</button>
+              <button class="btn-dl btn-dl-pdf" id="btn-pdf" onclick="downloadPDF()">Export PDF</button>
+            </div>
+            <button class="btn-dl btn-dl-wa" id="btn-wa" onclick="openWhatsApp()" style="width:100%">Send to
+              WhatsApp</button>
+          </div>
+          <div class="wa-preview" id="wa-preview-box">
+            <div class="wa-preview-header">
+              <div class="wa-preview-title">WhatsApp Message Preview</div>
+              <button type="button" class="btn-copy-wa" onclick="copyWAMessage()" title="Copy Text">📋 Copy Text</button>
+            </div>
+            <div class="wa-bubble" id="wa-bubble-text"></div>
+          </div>
+          <div class="tip-box"><strong>PNG</strong> — Download report image.<br><strong>Send to WhatsApp</strong> —
+            Download PNG and open WhatsApp with auto-generated message.<br><strong>PDF</strong> — Download official PDF report.</div>
+        </div>
+      </aside>
+
+      <div class="preview-area">
+        <div class="preview-header-bar">
+          <div class="preview-label"><span class="live-dot"></span>Live Preview — Updates automatically while typing</div>
+          <button type="button" class="btn-zoom-toggle" id="btn-zoom-manual" onclick="toggleZoomMode('manual')" title="Toggle View Mode">🔍 Fit to Screen</button>
+        </div>
+        <div class="preview-scroll" id="scroll-manual">
+          <div class="preview-scale-wrapper" id="wrapper-manual">
+            <div id="report-preview">
+            <div class="blob blob-tl"></div>
+            <div class="blob blob-tr"></div>
+            <div class="blob blob-br"></div>
+            <div class="blob blob-bl"></div>
+
+            <!-- Executive Header Banner -->
+            <div class="rpt-header rc">
+              <div class="rpt-header-left">
+                <div class="rpt-title">Student<br><span>Progress Report</span></div>
+              </div>
+              <div class="rpt-header-center">
+                <div class="rpt-logo-pill">
+                  <img src="timedoor_logo_putih.png" class="rpt-logo-img" alt="Timedoor Academy">
+                </div>
+              </div>
+              <div class="rpt-header-right">
+                <div class="rpt-meta-pill">Class: <strong id="prev-kelas">BGR-ADP-29</strong></div>
+                <div class="rpt-meta-pill">Date: <strong id="prev-tanggal">—</strong></div>
+              </div>
+            </div>
+
+            <!-- Documentation Activity Photos -->
+            <div class="rpt-section rc">
+              <div class="rpt-section-header">
+                <span>📸</span><span>Classroom Activity Snapshots</span>
+              </div>
+              <div class="rpt-photos">
+                <div class="rpt-photo-wrap" id="photo1-wrap">
+                  <div class="photo-empty-label"><span class="icon">▢</span><span>Photo 1</span></div>
+                </div>
+                <div class="rpt-photo-wrap" id="photo2-wrap">
+                  <div class="photo-empty-label"><span class="icon">▢</span><span>Photo 2</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Student Progress Stream -->
+            <div class="rpt-section rc">
+              <div class="rpt-section-header">
+                <span>🎓</span><span>Student Learning & Progress</span>
+              </div>
+              <div class="rpt-stream-wrap">
+                <div class="timeline-track"></div>
+                <div class="rpt-stream-list" id="prev-tbody"></div>
+                <div class="rpt-legend">
+                  <span class="legend-item"><span class="legend-dot dot-done"></span> Completed Lesson</span>
+                  <span class="legend-item"><span class="legend-dot dot-progress"></span> In Progress</span>
+                </div>
+              </div>
+            </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: AUTO RAPOR -->
+    <div id="tab-auto" class="tab-content">
+      <aside class="sidebar">
+        <div class="card">
+          <div class="card-title">Class Information</div>
+          <div class="form-row">
+            <div class="form-group"><label>Class Name</label><input type="text" id="auto-kelas" value="BGR-CE-01"
+                oninput="autoUpdatePreview()"></div>
+            <div class="form-group"><label>Date</label><input type="date" id="auto-tanggal"
+                onchange="autoUpdatePreview()"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🌐 Report Language</div>
+          <div class="lang-toggle">
+            <button id="lang-btn-en" class="lang-btn active" onclick="setLang('en')">English</button>
+            <button id="lang-btn-id" class="lang-btn" onclick="setLang('id')">Indonesia</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Documentation Photos</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Photo 1</label>
+              <div class="photo-input-group">
+                <input type="file" id="input-aphoto1" accept="image/*" onchange="handleAutoPhoto(event,'aphoto1')">
+                <button type="button" class="btn-del-photo" id="btndel-aphoto1" onclick="removeAutoPhoto('aphoto1')"
+                  title="Remove Photo" style="display:none;">✕</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Photo 2</label>
+              <div class="photo-input-group">
+                <input type="file" id="input-aphoto2" accept="image/*" onchange="handleAutoPhoto(event,'aphoto2')">
+                <button type="button" class="btn-del-photo" id="btndel-aphoto2" onclick="removeAutoPhoto('aphoto2')"
+                  title="Remove Photo" style="display:none;">✕</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" id="auto-student-card-title">Student Data & Generate Report</div>
+          <div class="students-list" id="auto-students-container"></div>
+          <button class="btn-add" id="auto-add-btn" onclick="addAutoStudent()">+ Add Student</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Export & Share</div>
+          <div class="download-group">
+            <div class="download-row">
+              <button class="btn-dl btn-dl-png" id="abtn-png" onclick="downloadAutoPNG()">Download PNG</button>
+              <button class="btn-dl btn-dl-pdf" id="abtn-pdf" onclick="downloadAutoPDF()">Export PDF</button>
+            </div>
+            <button class="btn-dl btn-dl-wa" id="abtn-wa" onclick="openAutoWhatsApp()" style="width:100%"
+              id="auto-wa-btn">Send to WhatsApp</button>
+          </div>
+          <div class="wa-preview">
+            <div class="wa-preview-header">
+              <div class="wa-preview-title" id="auto-wa-title">WhatsApp Message Preview</div>
+              <button type="button" class="btn-copy-wa" id="auto-btn-copy-wa" onclick="copyAutoWAMessage()" title="Copy Text">📋 Copy Text</button>
+            </div>
+            <div class="wa-bubble" id="auto-wa-bubble"></div>
+          </div>
+          <div class="tip-box" id="auto-tip-box"><strong>How to use:</strong> Enter student name → select level,
+            course, and lesson status → click ⚡ Generate to auto-create progress text.
+          </div>
+        </div>
+      </aside>
+
+      <div class="preview-area">
+        <div class="preview-header-bar">
+          <div class="preview-label"><span class="live-dot"></span><span id="auto-preview-label-text">Live Preview — Daily Report</span></div>
+          <button type="button" class="btn-zoom-toggle" id="btn-zoom-auto" onclick="toggleZoomMode('auto')" title="Toggle View Mode">🔍 Fit to Screen</button>
+        </div>
+        <div class="preview-scroll" id="scroll-auto">
+          <div class="preview-scale-wrapper" id="wrapper-auto">
+            <div id="auto-report-preview">
+            <div class="blob blob-tl"></div>
+            <div class="blob blob-tr"></div>
+            <div class="blob blob-br"></div>
+            <div class="blob blob-bl"></div>
+
+            <!-- Executive Header Banner -->
+            <div class="rpt-header rc">
+              <div class="rpt-header-left">
+                <div class="rpt-title" id="auto-rpt-title">Student<br><span>Progress Report</span></div>
+              </div>
+              <div class="rpt-header-center">
+                <div class="rpt-logo-pill">
+                  <img src="timedoor_logo_putih.png" class="rpt-logo-img" alt="Timedoor Academy">
+                </div>
+              </div>
+              <div class="rpt-header-right">
+                <div class="rpt-meta-pill"><span id="auto-label-kelas">Class</span>: <strong id="aprev-kelas">BGR-CE-01</strong></div>
+                <div class="rpt-meta-pill"><span id="auto-label-tanggal">Date</span>: <strong id="aprev-tanggal">—</strong></div>
+              </div>
+            </div>
+
+            <!-- Documentation Activity Photos -->
+            <div class="rpt-section rc">
+              <div class="rpt-section-header">
+                <span>📸</span><span id="auto-photo-sec-title">Classroom Activity Snapshots</span>
+              </div>
+              <div class="rpt-photos">
+                <div class="rpt-photo-wrap" id="aphoto1-wrap">
+                  <div class="photo-empty-label"><span class="icon">▢</span><span id="auto-photo1-label">Photo 1</span>
+                  </div>
+                </div>
+                <div class="rpt-photo-wrap" id="aphoto2-wrap">
+                  <div class="photo-empty-label"><span class="icon">▢</span><span id="auto-photo2-label">Photo 2</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Student Progress Stream -->
+            <div class="rpt-section rc">
+              <div class="rpt-section-header">
+                <span>🎓</span><span id="auto-progress-sec-title">Student Learning & Progress</span>
+              </div>
+              <div class="rpt-stream-wrap">
+                <div class="timeline-track"></div>
+                <div class="rpt-stream-list" id="aprev-tbody"></div>
+                <div class="rpt-legend" id="auto-legend">
+                  <span class="legend-item"><span class="legend-dot dot-done"></span> <span id="auto-legend-done">Completed Lesson</span></span>
+                  <span class="legend-item"><span class="legend-dot dot-progress"></span> <span id="auto-legend-prog">In Progress</span></span>
+                </div>
+              </div>
+            </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="app-footer">
+    <div>© 2026 <strong>Timedoor Academy</strong> — Meeting Report Generator</div>
+    <div>All Rights Reserved &middot; Created by <strong>FFR</strong> ☕🧑&zwj;💻</div>
+  </footer>
+
+  <div id="toast">Processing...</div>
+
+  <!-- Static data: course list, lesson objectives, templates -->
+  <script src="js/data.js"></script>
+  <script src="js/templates.js"></script>
+  <!-- App logic: all UI functions, language switching, PDF/PNG export -->
+  <script src="js/app.js"></script>
+
+</body>
+
+</html>
