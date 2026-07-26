@@ -39,8 +39,7 @@ const COURSE_TAB_MAP = {
     "Web Developer Teens": "WEB_DEV",
     "Python for Data Science": "PYTHON_FOR_DATA_SCIENCE(16)",
     "AI Machine Learning": "PYTHON_FOR_ML(16)",
-    "AI Computer Vision": "PYTHON_FOR_CV",        // TODO: mungkin "PYTHON_FOR_CV(16)"? mohon konfirmasi
-    "Python for Data Science": "PYTHON_FOR_DATA_SCIENCE(16)",             // TODO: mungkin "PYTHON AI (32Meeting)"? mohon konfirmasi
+    "AI Computer Vision": "PYTHON_FOR_CV(16)",        // TODO: mungkin "PYTHON_FOR_CV(16)"? mohon konfirmasi            // TODO: mungkin "PYTHON AI (32Meeting)"? mohon konfirmasi
     "JavaScript Developer": null,      // TODO: belum jelas cocok ke tab yang mana
     "Android Developer": "APP_DEV",         // TODO: mungkin "APP_DEV"? mohon konfirmasi
   },
