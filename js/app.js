@@ -593,6 +593,10 @@ function generateProgress(idx) {
   if (progEl) progEl.value = text;
   autoUpdateTable();
   toast(L.toastGenerated, 'success');
+
+  // Simpan ke Google Sheets di background (tidak memblokir UI).
+  // Kalau gagal (misal offline), guru tetap bisa lanjut export PDF/WA manual.
+  submitDailyReportToSheet(idx);
 }
 
 function syncStudentFromDOM(idx) {
@@ -677,6 +681,111 @@ function renderAutoInputs(){
     populateLessonDropdown(i);
   });
   autoUpdateTable();
+}
+
+// ============================================================
+// INTEGRASI JADWAL DARI GOOGLE SHEETS (via Apps Script)
+// ============================================================
+let _jadwalData = null; // cache hasil fetch terakhir: { success, kelas: {...} }
+
+async function loadMuridFromJadwal() {
+  const teacher = typeof getCurrentTeacher === 'function' ? getCurrentTeacher() : null;
+  const hari = document.getElementById('jadwal-hari-select').value;
+
+  if (!teacher) { toast('Sesi login tidak ditemukan, silakan login ulang.', 'error'); return; }
+  if (!hari) { toast('Pilih hari dulu.', 'error'); return; }
+
+  toast('Memuat jadwal...', 'info');
+  const res = await apiGetJadwal(teacher, hari);
+
+  if (!res.success) {
+    toast(res.error || 'Gagal memuat jadwal.', 'error');
+    return;
+  }
+
+  _jadwalData = res;
+  const kelasNames = Object.keys(res.kelas || {});
+  const kelasSelect = document.getElementById('jadwal-kelas-select');
+
+  if (kelasNames.length === 0) {
+    kelasSelect.innerHTML = '<option value="">Tidak ada kelas di hari ini</option>';
+    toast('Tidak ada kelas terjadwal untuk hari ini.', 'error');
+    return;
+  }
+
+  kelasSelect.innerHTML = '<option value="">-- Pilih Kelas --</option>' +
+    kelasNames.map(k => `<option value="${escHtml(k)}">${escHtml(k)} (${res.kelas[k].length} murid)</option>`).join('');
+
+  // Kalau cuma 1 kelas hari itu, langsung auto-pilih & isi murid
+  if (kelasNames.length === 1) {
+    kelasSelect.value = kelasNames[0];
+    onJadwalKelasChange();
+  } else {
+    toast(`${kelasNames.length} kelas ditemukan, silakan pilih kelasnya.`, 'success');
+  }
+}
+
+function onJadwalKelasChange() {
+  const kelasName = document.getElementById('jadwal-kelas-select').value;
+  if (!kelasName || !_jadwalData) return;
+
+  const students = _jadwalData.kelas[kelasName] || [];
+  autoStudents = students.map(st => ({
+    nama: st.nama || '',
+    progress: '',
+    criteria: '',
+    course: st.course || '',
+    lesson: st.lesson || '',
+    lesson2: '',
+    status: 'done',
+    lang: autoLang,
+  }));
+
+  const kelasInput = document.getElementById('auto-kelas');
+  if (kelasInput) kelasInput.value = kelasName;
+
+  renderAutoInputs();
+  autoUpdatePreview();
+  toast(`${students.length} murid dimuat untuk kelas ${kelasName}.`, 'success');
+}
+
+// Dipanggil auth.js setelah login sukses (opsional hook, saat ini belum
+// dipakai untuk apa-apa secara default, disediakan untuk pengembangan lanjut)
+function onLoginSuccess(teacherName) {
+  // placeholder — bisa dipakai nanti misal auto-set default Hari = hari ini
+}
+
+// ============================================================
+// SUBMIT LAPORAN KE GOOGLE SHEETS (dipanggil dari generateProgress)
+// ============================================================
+async function submitDailyReportToSheet(idx) {
+  const s = autoStudents[idx];
+  const teacher = typeof getCurrentTeacher === 'function' ? getCurrentTeacher() : null;
+  const hari = document.getElementById('jadwal-hari-select').value;
+  const kelas = document.getElementById('auto-kelas').value;
+
+  if (!teacher || !hari || !kelas || !s.nama || !s.course || !s.lesson) {
+    // Data belum lengkap (misal guru isi manual tanpa "Muat Jadwal") —
+    // tidak apa-apa, biarkan silent karena ini fitur tambahan, bukan wajib
+    // untuk tetap bisa export PDF/PNG/WA seperti biasa.
+    return;
+  }
+
+  const res = await apiSubmitDaily({
+    teacher, hari, kelas,
+    student: s.nama,
+    criteria: s.criteria,
+    course: s.course,
+    lesson: s.lesson,
+    noteText: s.progress,
+  });
+
+  if (res.success) {
+    toast('Tersimpan ke sistem ✔', 'success');
+  } else {
+    console.warn('Gagal submit ke sheet:', res.error);
+    toast('Laporan dibuat, tapi gagal tersimpan ke sistem (cek koneksi).', 'error');
+  }
 }
 
 function addAutoStudent(){

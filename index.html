@@ -26,6 +26,7 @@
     <div class="tab-bar">
       <button class="tab-btn active" onclick="switchTab('manual')">✏️ Manual Report</button>
       <button class="tab-btn" onclick="switchTab('auto')">⚡ Daily Auto Report</button>
+      <button class="tab-btn" onclick="switchTab('exam')">🎓 Exam Report</button>
     </div>
   </div>
 
@@ -159,6 +160,23 @@
     <!-- TAB: AUTO RAPOR -->
     <div id="tab-auto" class="tab-content">
       <aside class="sidebar">
+        <div class="card">
+          <div class="card-title">📅 Muat Jadwal dari Sistem</div>
+          <div class="jadwal-loader-row">
+            <select id="jadwal-hari-select">
+              <option value="">-- Pilih Hari --</option>
+              <option value="Senin">Senin</option>
+              <option value="Selasa">Selasa</option>
+              <option value="Rabu">Rabu</option>
+              <option value="Kamis">Kamis</option>
+              <option value="Jumat">Jumat</option>
+              <option value="Sabtu">Sabtu</option>
+              <option value="Minggu">Minggu</option>
+            </select>
+            <select id="jadwal-kelas-select" onchange="onJadwalKelasChange()"><option value="">-- Pilih Hari Dulu --</option></select>
+          </div>
+          <button type="button" class="btn-load-jadwal" onclick="loadMuridFromJadwal()">⚡ Muat Murid Otomatis</button>
+        </div>
         <div class="card">
           <div class="card-title">Class Information</div>
           <div class="form-row">
@@ -294,6 +312,110 @@
         </div>
       </div>
     </div>
+
+    <!-- ============================================================ -->
+    <!-- TAB: EXAM REPORT                                              -->
+    <!-- ============================================================ -->
+    <div id="tab-exam" class="tab-content">
+      <aside class="sidebar">
+        <div class="card">
+          <div class="card-title">🔔 Siswa yang Perlu Di-Exam</div>
+          <select id="exam-pending-select" onchange="onPendingExamSelect()">
+            <option value="">-- Memuat daftar... --</option>
+          </select>
+          <button type="button" class="btn-load-jadwal" onclick="loadPendingExams()">🔄 Muat Ulang Daftar</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Data Siswa</div>
+          <label>Nama Murid</label>
+          <input type="text" id="exam-student" placeholder="Nama murid">
+          <label>Kelas</label>
+          <input type="text" id="exam-kelas" placeholder="Nama kelas">
+          <label>Lesson (kelipatan 8)</label>
+          <input type="number" id="exam-lesson" placeholder="misal 8, 16, 24">
+          <label>Criteria</label>
+          <select id="exam-criteria" onchange="onExamCriteriaChange()">
+            <option value="">-- Pilih Criteria --</option>
+            <option value="Junior">Junior</option>
+            <option value="Kids">Kids</option>
+            <option value="Teens">Teens</option>
+          </select>
+          <label>Course</label>
+          <select id="exam-course" onchange="onExamCourseChange()"><option value="">-- Pilih Criteria Dulu --</option></select>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Tanggal</div>
+          <input type="date" id="exam-tanggal">
+        </div>
+      </aside>
+
+      <section class="main-panel">
+        <div class="card">
+          <div class="card-title">📊 Penilaian</div>
+          <button type="button" class="btn-load-jadwal" onclick="fetchExamTemplates()">🪄 Ambil Template dari Sistem</button>
+          <div id="exam-tab-map-hint" class="auth-error" style="text-align:left;margin-top:6px;"></div>
+
+          <div class="exam-criteria-block">
+            <div class="exam-criteria-header">
+              <span>📘 Coding Literacy & Concept</span>
+              <select id="exam-grade-literacy" onchange="fetchExamTemplates()">
+                <option value="A">A — Sangat Baik</option>
+                <option value="B" selected>B — Baik</option>
+                <option value="C">C — Cukup Baik</option>
+              </select>
+              <button type="button" class="btn-variant" onclick="cycleVariant('literacy')">🔄 Varian Lain</button>
+            </div>
+            <textarea id="exam-text-literacy" rows="4" placeholder="Klik 'Ambil Template dari Sistem', atau ketik manual di sini"></textarea>
+          </div>
+
+          <div class="exam-criteria-block">
+            <div class="exam-criteria-header">
+              <span>💻 Coding Application</span>
+              <select id="exam-grade-application" onchange="fetchExamTemplates()">
+                <option value="A">A — Sangat Baik</option>
+                <option value="B" selected>B — Baik</option>
+                <option value="C">C — Cukup Baik</option>
+              </select>
+              <button type="button" class="btn-variant" onclick="cycleVariant('application')">🔄 Varian Lain</button>
+            </div>
+            <textarea id="exam-text-application" rows="4" placeholder="Klik 'Ambil Template dari Sistem', atau ketik manual di sini"></textarea>
+          </div>
+
+          <div class="exam-criteria-block">
+            <div class="exam-criteria-header">
+              <span>🌟 Character</span>
+              <select id="exam-grade-character" onchange="fetchExamTemplates()">
+                <option value="A">A — Sangat Baik</option>
+                <option value="B" selected>B — Baik</option>
+                <option value="C">C — Cukup Baik</option>
+              </select>
+              <button type="button" class="btn-variant" onclick="cycleVariant('character')">🔄 Varian Lain</button>
+            </div>
+            <textarea id="exam-text-character" rows="4" placeholder="Klik 'Ambil Template dari Sistem', atau ketik manual di sini"></textarea>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">💬 Preview Pesan WhatsApp</div>
+          <div class="wa-preview">
+            <div class="wa-preview-header">
+              <div class="wa-preview-title">WhatsApp Message Preview</div>
+              <button type="button" class="btn-copy-wa" onclick="copyExamWAMessage()" title="Copy Text">📋 Copy Text</button>
+            </div>
+            <div class="wa-bubble" id="exam-wa-bubble"></div>
+          </div>
+          <div class="download-group" style="margin-top:16px;">
+            <div class="download-row">
+              <button class="btn-dl btn-dl-pdf" id="ebtn-pdf" onclick="downloadExamPDF()">📄 Export PDF</button>
+              <button class="btn-dl btn-dl-wa" id="ebtn-wa" onclick="openExamWhatsApp()">📤 Send to WhatsApp</button>
+            </div>
+            <button class="btn-dl" id="ebtn-save" onclick="submitExamToSheet()" style="width:100%;background:var(--g700);">💾 Simpan ke Sistem (Tandai Selesai)</button>
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
 
   <footer class="app-footer">
@@ -306,8 +428,15 @@
   <!-- Static data: course list, lesson objectives, templates -->
   <script src="js/data.js"></script>
   <script src="js/templates.js"></script>
+  <!-- Mapping nama course dropdown -> nama tab spreadsheet exam (lihat isi file untuk TODO) -->
+  <script src="js/course-tab-map.js"></script>
+  <!-- Backend connection: Google Apps Script wrapper + PIN login gate -->
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
   <!-- App logic: all UI functions, language switching, PDF/PNG export -->
   <script src="js/app.js"></script>
+  <!-- Exam Report tab logic -->
+  <script src="js/exam.js"></script>
 
 </body>
 

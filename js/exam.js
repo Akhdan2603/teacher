@@ -1,0 +1,265 @@
+// ============================================================
+// EXAM REPORT TAB
+// Depends on: data.js (COURSE_MAP), course-tab-map.js, api.js, auth.js, app.js (buildAndSavePDF, toast, escHtml, formatDate)
+// ============================================================
+
+let examVariants = { literacy: [], application: [], character: [] };
+let examVariantIndex = { literacy: 0, application: 0, character: 0 };
+let examPendingList = [];
+let examPendingLoaded = false;
+
+// Muat daftar pending HANYA saat guru pertama kali buka tab Exam Report
+// (bukan langsung saat halaman load, supaya tidak fetch sebelum login).
+const _examTabBtnObserver = document.addEventListener('DOMContentLoaded', () => {
+  const btns = document.querySelectorAll('.tab-bar .tab-btn');
+  const examBtn = Array.from(btns).find(b => b.textContent.includes('Exam Report'));
+  if (examBtn) {
+    examBtn.addEventListener('click', () => {
+      if (!examPendingLoaded) { loadPendingExams(); examPendingLoaded = true; }
+    });
+  }
+});
+
+async function loadPendingExams() {
+  const teacher = typeof getCurrentTeacher === 'function' ? getCurrentTeacher() : null;
+  const select = document.getElementById('exam-pending-select');
+  if (!teacher) { select.innerHTML = '<option value="">Sesi login tidak ditemukan</option>'; return; }
+
+  select.innerHTML = '<option value="">Memuat...</option>';
+  const res = await apiGet('getPendingExams', { teacher });
+
+  if (!res.success) {
+    select.innerHTML = '<option value="">Gagal memuat</option>';
+    toast(res.error || 'Gagal memuat daftar pending exam.', 'error');
+    return;
+  }
+
+  examPendingList = res.pending || [];
+  if (examPendingList.length === 0) {
+    select.innerHTML = '<option value="">🎉 Tidak ada siswa yang perlu di-exam</option>';
+    return;
+  }
+
+  select.innerHTML = '<option value="">-- Pilih Siswa --</option>' +
+    examPendingList.map((p, i) =>
+      `<option value="${i}">${escHtml(p.student)} (${escHtml(p.kelas)}, ${escHtml(p.course)}, Lesson ${p.lesson})</option>`
+    ).join('');
+}
+
+function onPendingExamSelect() {
+  const idx = document.getElementById('exam-pending-select').value;
+  if (idx === '') return;
+  const p = examPendingList[idx];
+
+  document.getElementById('exam-student').value = p.student;
+  document.getElementById('exam-kelas').value = p.kelas;
+  document.getElementById('exam-lesson').value = p.lesson;
+
+  // Catatan: p.course di sini adalah teks bebas yang guru ketik saat submit
+  // daily report — belum tentu persis sama dengan opsi di dropdown COURSE_MAP
+  // aplikasi ini. Jadi Criteria & Course TETAP harus dikonfirmasi manual oleh
+  // guru di bawah, bukan diisi otomatis, supaya tidak salah pilih template.
+  toast(`Data dimuat. Course tercatat: "${p.course}" — silakan konfirmasi Criteria & Course yang sesuai di bawah.`, 'success');
+}
+
+function onExamCriteriaChange() {
+  const criteria = document.getElementById('exam-criteria').value;
+  const courseSelect = document.getElementById('exam-course');
+
+  if (!criteria || !COURSE_MAP[criteria]) {
+    courseSelect.innerHTML = '<option value="">-- Pilih Criteria Dulu --</option>';
+    document.getElementById('exam-tab-map-hint').textContent = '';
+    return;
+  }
+
+  courseSelect.innerHTML = '<option value="">-- Pilih Course --</option>' +
+    COURSE_MAP[criteria].map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+  onExamCourseChange();
+}
+
+function onExamCourseChange() {
+  const criteria = document.getElementById('exam-criteria').value;
+  const course = document.getElementById('exam-course').value;
+  const hint = document.getElementById('exam-tab-map-hint');
+
+  if (!criteria || !course) { hint.textContent = ''; return; }
+
+  const tabName = getCourseTabName(criteria, course);
+  hint.textContent = tabName
+    ? ''
+    : '⚠️ Course ini belum ada mapping ke tab spreadsheet (lihat js/course-tab-map.js). Tombol "Ambil Template dari Sistem" tidak akan bekerja untuk course ini — isi manual saja di kotak teks di bawah.';
+}
+
+async function fetchExamTemplates() {
+  const criteria = document.getElementById('exam-criteria').value;
+  const course = document.getElementById('exam-course').value;
+  const lesson = document.getElementById('exam-lesson').value;
+  const student = document.getElementById('exam-student').value;
+
+  if (!criteria || !course || !lesson || !student) {
+    toast('Isi dulu Nama Murid, Lesson, Criteria, dan Course.', 'error');
+    return;
+  }
+
+  const tabName = getCourseTabName(criteria, course);
+  if (!tabName) {
+    toast('Course ini belum ada mapping tab spreadsheet — isi manual di kotak teks.', 'error');
+    return;
+  }
+
+  const grades = {
+    literacy: document.getElementById('exam-grade-literacy').value,
+    application: document.getElementById('exam-grade-application').value,
+    character: document.getElementById('exam-grade-character').value,
+  };
+
+  toast('Mengambil template dari sistem...', 'success');
+  const res = await apiGetExamTemplate(criteria, tabName, lesson, student, grades);
+
+  if (!res.success) {
+    toast(res.error || 'Gagal mengambil template.', 'error');
+    return;
+  }
+
+  ['literacy', 'application', 'character'].forEach(cat => {
+    examVariants[cat] = res.texts[cat] || [];
+    examVariantIndex[cat] = 0;
+    document.getElementById(`exam-text-${cat}`).value = examVariants[cat][0] || '';
+  });
+
+  updateExamPreview();
+
+  const emptyCats = ['literacy', 'application', 'character'].filter(c => examVariants[c].length === 0);
+  if (emptyCats.length > 0) {
+    toast(`Template dimuat, tapi kategori berikut kosong di spreadsheet: ${emptyCats.join(', ')}. Isi manual untuk kategori itu.`, 'error');
+  } else {
+    toast('Template berhasil dimuat ✔ — cek & edit dulu sebelum kirim.', 'success');
+  }
+}
+
+function cycleVariant(category) {
+  const variants = examVariants[category];
+  if (!variants || variants.length <= 1) {
+    toast('Tidak ada varian lain untuk kategori ini.', 'error');
+    return;
+  }
+  examVariantIndex[category] = (examVariantIndex[category] + 1) % variants.length;
+  document.getElementById(`exam-text-${category}`).value = variants[examVariantIndex[category]];
+  updateExamPreview();
+}
+
+function buildExamWAMessage() {
+  const student = document.getElementById('exam-student').value || '—';
+  const course = document.getElementById('exam-course').value || document.getElementById('exam-kelas').value || '—';
+  const lit = document.getElementById('exam-text-literacy').value.trim();
+  const app = document.getElementById('exam-text-application').value.trim();
+  const char = document.getElementById('exam-text-character').value.trim();
+
+  return `Halo Bapak/Ibu 😊\nBerikut hasil Exam Report ananda *${student}* untuk course *${course}*:\n\n`
+    + `📘 *Coding Literacy & Concept*\n${lit || '—'}\n\n`
+    + `💻 *Coding Application*\n${app || '—'}\n\n`
+    + `🌟 *Character*\n${char || '—'}\n\n`
+    + `Terima kasih atas dukungan Bapak/Ibu 🙏`;
+}
+
+function updateExamPreview() {
+  document.getElementById('exam-wa-bubble').textContent = buildExamWAMessage();
+}
+
+async function copyExamWAMessage() {
+  const msg = buildExamWAMessage();
+  try {
+    await navigator.clipboard.writeText(msg);
+    toast('Pesan disalin!', 'success');
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = msg;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast('Pesan disalin!', 'success');
+  }
+}
+
+function openExamWhatsApp() {
+  updateExamPreview();
+  window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(buildExamWAMessage()), '_blank');
+}
+
+async function downloadExamPDF() {
+  const btn = document.getElementById('ebtn-pdf');
+  btn.disabled = true; btn.textContent = 'Processing...';
+
+  try {
+    const student = document.getElementById('exam-student').value || '—';
+    const kelas = document.getElementById('exam-kelas').value || '—';
+    const tanggalInput = document.getElementById('exam-tanggal').value || new Date().toISOString().slice(0, 10);
+    const tanggal = formatDate(tanggalInput);
+
+    const combinedText =
+      `Coding Literacy & Concept:\n${document.getElementById('exam-text-literacy').value || '—'}\n\n` +
+      `Coding Application:\n${document.getElementById('exam-text-application').value || '—'}\n\n` +
+      `Character:\n${document.getElementById('exam-text-character').value || '—'}`;
+
+    // Catatan: Exam Report memakai builder PDF yang sama dengan Daily Report
+    // (buildAndSavePDF), demi konsistensi visual & menghindari kode duplikat.
+    // photoStore dikosongkan karena Exam Report tidak melibatkan foto — PDF
+    // akan menampilkan kotak placeholder "No Photo" di bagian atas, ini
+    // keterbatasan kosmetik ringan, bukan bug (bisa dibuat layout khusus
+    // tanpa foto sama sekali kalau nanti diperlukan).
+    await buildAndSavePDF({
+      kelas, tanggal,
+      photoStore: {},
+      students: [{ nama: student, progress: combinedText }],
+      labels: {
+        title: 'Exam Report',
+        labelKelas: 'Class: ',
+        labelTanggal: 'Date: ',
+        colName: 'NAME',
+        colProgress: 'EXAM RESULT',
+        photoEmpty: () => 'No Photo',
+        fileName: (k) => `ExamReport_${k}_${student.replace(/\s+/g, '_')}`,
+      },
+    });
+
+    toast('PDF berhasil dibuat!', 'success');
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '📄 Download PDF';
+  }
+}
+
+async function submitExamToSheet() {
+  const teacher = typeof getCurrentTeacher === 'function' ? getCurrentTeacher() : null;
+  const kelas = document.getElementById('exam-kelas').value;
+  const student = document.getElementById('exam-student').value;
+  const course = document.getElementById('exam-course').value;
+
+  if (!teacher) { toast('Sesi login tidak ditemukan, silakan login ulang.', 'error'); return; }
+  if (!kelas || !student || !course) {
+    toast('Lengkapi dulu Kelas, Nama Murid, dan Course sebelum menyimpan.', 'error');
+    return;
+  }
+
+  const combinedText =
+    `Coding Literacy & Concept: ${document.getElementById('exam-text-literacy').value || '—'}\n` +
+    `Coding Application: ${document.getElementById('exam-text-application').value || '—'}\n` +
+    `Character: ${document.getElementById('exam-text-character').value || '—'}`;
+
+  const btn = document.getElementById('ebtn-save');
+  btn.disabled = true; btn.textContent = 'Menyimpan...';
+
+  const res = await apiSubmitExam({ teacher, kelas, student, course, noteText: combinedText });
+
+  btn.disabled = false; btn.textContent = '💾 Simpan ke Sistem';
+
+  if (res.success) {
+    toast('Tersimpan ✔ status exam sudah ditandai "Sudah Dibuat"', 'success');
+    examPendingLoaded = false; // supaya daftar pending di-refresh lagi
+    loadPendingExams();
+  } else {
+    toast(res.error || 'Gagal menyimpan ke sistem.', 'error');
+  }
+}
