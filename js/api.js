@@ -5,7 +5,7 @@
 // Web App Anda (Deploy > New deployment > Web app > copy URL).
 // Contoh: 'https://script.google.com/macros/s/AKfycbx.../exec'
 // ============================================================
-const GAS_URL = 'PASTE_URL_WEB_APP_ANDA_DI_SINI';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwa7uHP17q4MgOhK6oYjo-9tzf3dypyB00WWVjNtiJjT2NwtOkzq7car0ybLdkk6bhPuQ/exec';
 
 async function apiGet(action, params = {}) {
   const query = new URLSearchParams({ action, ...params }).toString();
