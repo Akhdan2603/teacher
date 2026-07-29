@@ -200,6 +200,26 @@ function handlePhoto(e,key){
   reader.onload = ev => {photoData[key]=ev.target.result;renderPhoto(key,ev.target.result);};
   reader.readAsDataURL(file);
 }
+function updatePhotoLayout(prefix){
+  const wrap1 = document.getElementById(prefix+'1-wrap');
+  const wrap2 = document.getElementById(prefix+'2-wrap');
+  const section = document.getElementById(prefix === 'aphoto' ? 'auto-photo-section' : 'photo-section');
+  if(!wrap1 || !wrap2 || !section) return;
+
+  const has1 = wrap1.classList.contains('has-photo');
+  const has2 = wrap2.classList.contains('has-photo');
+  const count = (has1?1:0) + (has2?1:0);
+
+  // 0 foto: sembunyikan section foto total (misal dipakai Exam Report)
+  section.style.display = count === 0 ? 'none' : '';
+
+  // 1 foto: sembunyikan slot yang kosong — sisanya (flex:1) otomatis melebar
+  // penuh karena jadi satu-satunya flex item di barisnya. 2 foto: normal side-by-side.
+  wrap1.style.display = (count === 1 && !has1) ? 'none' : '';
+  wrap2.style.display = (count === 1 && !has2) ? 'none' : '';
+
+  fitPreviewScale();
+}
 function renderPhoto(key,src){
   const wrap = document.getElementById(key+'-wrap');
   if(!wrap) return;
@@ -209,6 +229,7 @@ function renderPhoto(key,src){
   wrap.classList.add('has-photo');
   const btnDel = document.getElementById('btndel-' + key);
   if(btnDel) btnDel.style.display = 'flex';
+  updatePhotoLayout(isAuto ? 'aphoto' : 'photo');
   fitPreviewScale();
 }
 function removePhoto(key){
@@ -237,6 +258,7 @@ function resetPhotoPreview(key){
   const labelText = isAuto ? (LANG_UI[autoLang]['photo'+num]) : `Photo ${num}`;
   wrap.innerHTML = `<div class="photo-empty-label"><span class="icon">▢</span><span>${labelText}</span></div>`;
   wrap.classList.remove('has-photo');
+  updatePhotoLayout(isAuto ? 'aphoto' : 'photo');
   fitPreviewScale();
 }
 
@@ -883,16 +905,37 @@ async function buildAndSavePDF({kelas, tanggal, photoStore, students, labels}) {
   doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(240,253,244);doc.text(labels.labelKelas + kelas,W-22,23,{align:'right'});
   doc.text(labels.labelTanggal + tanggal,W-22,30,{align:'right'});
   
-  const MARGIN=14,GAP=8,PHOTO_W=(W-MARGIN*2-GAP)/2,PHOTO_H=Math.round(PHOTO_W*(9/16)),PHOTO_Y=44;
-  for(let i=1;i<=2;i++){
-    const px=MARGIN+(i-1)*(PHOTO_W+GAP);
-    const src=photoStore[Object.keys(photoStore)[i-1]];
-    if(src){const fmt=src.startsWith('data:image/png')?'PNG':'JPEG';doc.addImage(src,fmt,px,PHOTO_Y,PHOTO_W,PHOTO_H);}
-    else{doc.setFillColor(...G_LIGHT);doc.roundedRect(px,PHOTO_Y,PHOTO_W,PHOTO_H,3,3,'F');doc.setFont('helvetica','italic');doc.setFontSize(9);doc.setTextColor(...MUTED);doc.text(labels.photoEmpty(i),px+PHOTO_W/2,PHOTO_Y+PHOTO_H/2,{align:'center'});}
+  const MARGIN=14,GAP=8;
+  const photoKeys = Object.keys(photoStore);
+  const photoSrcs = photoKeys.map(k => photoStore[k]).filter(src => !!src); // hanya yang benar-benar terisi
+  const photoCount = photoSrcs.length;
+
+  let PHOTO_Y=44, photoBlockHeight=0;
+
+  if (photoCount === 0) {
+    // Tidak ada foto sama sekali (misal Exam Report) — bagian foto disembunyikan
+    // total, tabel langsung mulai di posisi header, tidak ada kotak kosong.
+    photoBlockHeight = 0;
+  } else if (photoCount === 1) {
+    // 1 foto — tampil besar mengisi lebar penuh (bukan 1 kotak kecil + 1 kotak kosong)
+    const PHOTO_W = W - MARGIN*2, PHOTO_H = Math.round(PHOTO_W*(9/22));
+    const src = photoSrcs[0];
+    const fmt = src.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+    doc.addImage(src, fmt, MARGIN, PHOTO_Y, PHOTO_W, PHOTO_H);
+    photoBlockHeight = PHOTO_H;
+  } else {
+    // 2 foto — side-by-side seperti sebelumnya
+    const PHOTO_W=(W-MARGIN*2-GAP)/2, PHOTO_H=Math.round(PHOTO_W*(9/16));
+    for(let i=1;i<=2;i++){
+      const px=MARGIN+(i-1)*(PHOTO_W+GAP);
+      doc.addImage(photoSrcs[i-1], photoSrcs[i-1].startsWith('data:image/png')?'PNG':'JPEG', px, PHOTO_Y, PHOTO_W, PHOTO_H);
+    }
+    photoBlockHeight = PHOTO_H;
   }
-  
+
   const TABLE_X=MARGIN,TABLE_W=W-MARGIN*2,COL_NAME_W=44,COL_LESSON_W=32;
-  let rowY=PHOTO_Y+PHOTO_H+8;const HEADER_H=9;
+  let rowY = photoCount === 0 ? PHOTO_Y : PHOTO_Y+photoBlockHeight+8;
+  const HEADER_H=9;
   doc.setFillColor(...G_DARK);doc.roundedRect(TABLE_X,rowY,TABLE_W,HEADER_H,2,2,'F');
   doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...WHITE);
   doc.text('STATUS',TABLE_X+4,rowY+6);
@@ -935,8 +978,9 @@ async function buildAndSavePDF({kelas, tanggal, photoStore, students, labels}) {
     rowY+=cellH;
   });
   
+  const tableStartY = photoCount === 0 ? PHOTO_Y : PHOTO_Y+photoBlockHeight+8;
   doc.setDrawColor(...G_MED);doc.setLineWidth(0.5);
-  doc.roundedRect(TABLE_X,PHOTO_Y+PHOTO_H+8,TABLE_W,rowY-(PHOTO_Y+PHOTO_H+8),2,2,'S');
+  doc.roundedRect(TABLE_X,tableStartY,TABLE_W,rowY-tableStartY,2,2,'S');
   doc.save(`${labels.fileName.replace(/\s+/g,'_')}.pdf`);
 }
 

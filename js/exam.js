@@ -55,11 +55,41 @@ function onPendingExamSelect() {
   document.getElementById('exam-kelas').value = p.kelas;
   document.getElementById('exam-lesson').value = p.lesson;
 
-  // Catatan: p.course di sini adalah teks bebas yang guru ketik saat submit
-  // daily report — belum tentu persis sama dengan opsi di dropdown COURSE_MAP
-  // aplikasi ini. Jadi Criteria & Course TETAP harus dikonfirmasi manual oleh
-  // guru di bawah, bukan diisi otomatis, supaya tidak salah pilih template.
-  toast(`Data dimuat. Course tercatat: "${p.course}" — silakan konfirmasi Criteria & Course yang sesuai di bawah.`, 'success');
+  autoFillCriteriaAndCourse(p.kelas, p.student);
+}
+
+// Tarik Criteria & Course otomatis dari data Daily Report TERAKHIR untuk
+// siswa ini (tersimpan di tab Student). Tetap bisa di-override manual
+// oleh guru setelahnya — ini cuma pre-fill, bukan field terkunci.
+async function autoFillCriteriaAndCourse(kelas, student) {
+  if (!kelas || !student) return;
+
+  toast('Mengambil Criteria & Course dari data terakhir...', 'success');
+  const res = await apiGetStudentInfo(kelas, student);
+
+  if (!res.success) {
+    toast(`${res.error || 'Gagal mengambil data siswa.'} Silakan pilih Criteria & Course manual.`, 'error');
+    return;
+  }
+
+  if (res.criteria && COURSE_MAP[res.criteria]) {
+    document.getElementById('exam-criteria').value = res.criteria;
+    onExamCriteriaChange(); // isi ulang dropdown Course sesuai Criteria ini
+
+    if (res.course) {
+      const courseSelect = document.getElementById('exam-course');
+      const matchExists = Array.from(courseSelect.options).some(o => o.value === res.course);
+      if (matchExists) {
+        courseSelect.value = res.course;
+        onExamCourseChange();
+        toast(`Criteria & Course otomatis terisi dari data terakhir: ${res.criteria} — ${res.course}`, 'success');
+      } else {
+        toast(`Course terakhir ("${res.course}") tidak cocok dengan opsi dropdown saat ini — silakan pilih manual.`, 'error');
+      }
+    }
+  } else {
+    toast('Belum ada data Criteria tersimpan untuk siswa ini (mungkin belum pernah Daily Report, atau kolom Criteria belum ditambahkan di tab Student) — silakan pilih manual.', 'error');
+  }
 }
 
 function onExamCriteriaChange() {

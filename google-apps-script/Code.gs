@@ -71,7 +71,7 @@ function doGet(e) {
   try {
     switch (action) {
       case 'login':
-        result = handleLogin(e.parameter.name, e.parameter.pin);
+        result = handleLogin(e.parameter.pin);
         break;
       case 'getTeachers':
         result = getTeacherNames();
@@ -94,6 +94,9 @@ function doGet(e) {
             character: e.parameter.gradeCharacter,
           }
         );
+        break;
+      case 'getStudentInfo':
+        result = getStudentLatestInfo(e.parameter.kelas, e.parameter.student);
         break;
       default:
         result = { success: false, error: 'Unknown action: ' + action };
@@ -136,25 +139,32 @@ function doPost(e) {
 // AUTH (PIN check — bukan keamanan tingkat tinggi, cuma gerbang
 // identitas ringan sesuai kebutuhan project ini)
 // ------------------------------------------------------------
-function handleLogin(name, pin) {
+function handleLogin(pin) {
   const sheet = SpreadsheetApp.openById(getConfig_().mainSheetId).getSheetByName(TABS.TEACHER);
   const rows = sheet.getDataRange().getValues(); // [Name, PIN, Chat ID tele, status]
-  const header = rows[0];
+  const trimmedPin = String(pin).trim();
 
+  if (!trimmedPin) return { success: false, error: 'PIN kosong.' };
+
+  const matches = [];
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
-    const rowName = String(row[0]).trim();
     const rowPin = String(row[1]).trim();
     const isActive = String(row[3]).toUpperCase() === 'TRUE';
-
-    if (rowName.toLowerCase() === String(name).trim().toLowerCase() && isActive) {
-      if (rowPin === String(pin).trim()) {
-        return { success: true, teacher: rowName };
-      }
-      return { success: false, error: 'PIN salah' };
-    }
+    if (isActive && rowPin === trimmedPin) matches.push(String(row[0]).trim());
   }
-  return { success: false, error: 'Nama guru tidak ditemukan atau tidak aktif' };
+
+  if (matches.length === 0) {
+    return { success: false, error: 'PIN tidak ditemukan.' };
+  }
+  if (matches.length > 1) {
+    // Safety-net: PIN dipakai lebih dari 1 guru aktif. Sistem tidak bisa
+    // menebak yang mana, jadi diminta hubungi admin untuk perbaiki data
+    // (PIN wajib unik antar guru sejak login jadi PIN-only, tanpa nama).
+    return { success: false, error: `PIN ini terdaftar untuk lebih dari 1 guru (${matches.join(', ')}). Hubungi admin untuk perbaiki PIN di tab Teacher.` };
+  }
+
+  return { success: true, teacher: matches[0] };
 }
 
 function getTeacherNames() {
@@ -239,8 +249,8 @@ function submitDailyReport(payload) {
   validatePayload_(payload, ['teacher', 'hari', 'kelas', 'student', 'course', 'lesson']);
   const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
 
-  // 1. Update tab Student: isi Course & Lesson sekarang (state terbaru murid ini)
-  updateStudentRow_(ss, payload.hari, payload.kelas, payload.student, payload.course, payload.lesson);
+  // 1. Update tab Student: isi Course, Lesson sekarang, & Criteria (state terbaru murid ini)
+  updateStudentRow_(ss, payload.hari, payload.kelas, payload.student, payload.course, payload.lesson, payload.criteria);
 
   // 2. Update tab Log_Laporan: tulis noteText ke kolom "Daily" (in-place, bukan append)
   updateLogRow_(ss, payload, 'Daily', payload.noteText || '');
@@ -303,16 +313,48 @@ function validatePayload_(payload, requiredFields) {
 // ------------------------------------------------------------
 // HELPER: update 1 baris di tab Student berdasarkan Hari+Kelas+Student
 // ------------------------------------------------------------
-function updateStudentRow_(ss, hari, kelas, student, course, lesson) {
+function updateStudentRow_(ss, hari, kelas, student, course, lesson, criteria) {
   const sheet = ss.getSheetByName(TABS.STUDENT);
   const rows = sheet.getDataRange().getValues();
+  const header = rows[0];
+  const criteriaCol = findColumnIndex_(header, 'Criteria'); // -1 kalau kolomnya belum ditambahkan user
+
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][0] === hari && rows[i][1] === kelas && rows[i][2] === student) {
       sheet.getRange(i + 1, 4).setValue(course);  // kolom D: Course
       sheet.getRange(i + 1, 5).setValue(lesson);  // kolom E: Lesson sekarang
+      if (criteriaCol !== -1 && criteria) {
+        sheet.getRange(i + 1, criteriaCol + 1).setValue(criteria);
+      }
       return;
     }
   }
+}
+
+// ------------------------------------------------------------
+// Ambil data TERAKHIR (criteria, course, lesson) yang tersimpan untuk
+// 1 siswa di tab Student — dipakai Exam Report supaya guru tidak perlu
+// pilih ulang Criteria & Course secara manual (sudah otomatis dari
+// submission Daily Report paling akhir untuk siswa ini).
+// ------------------------------------------------------------
+function getStudentLatestInfo(kelas, student) {
+  const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
+  const sheet = ss.getSheetByName(TABS.STUDENT);
+  const rows = sheet.getDataRange().getValues();
+  const header = rows[0];
+  const criteriaCol = findColumnIndex_(header, 'Criteria');
+
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][1] === kelas && rows[i][2] === student) {
+      return {
+        success: true,
+        course: rows[i][3] || '',
+        lesson: rows[i][4] || '',
+        criteria: criteriaCol !== -1 ? (rows[i][criteriaCol] || '') : '',
+      };
+    }
+  }
+  return { success: false, error: `Siswa "${student}" (${kelas}) tidak ditemukan di tab Student.` };
 }
 
 // ------------------------------------------------------------
@@ -333,6 +375,10 @@ function updateLogRow_(ss, payload, columnName, noteText) {
       sheet.getRange(i + 1, 5).setValue(payload.course);   // Course
       sheet.getRange(i + 1, 6).setValue(payload.lesson);   // Lesson sekarang
       sheet.getRange(i + 1, colIndex + 1).setValue(noteText);
+      const criteriaCol = findColumnIndex_(header, 'Criteria');
+      if (criteriaCol !== -1 && payload.criteria) {
+        sheet.getRange(i + 1, criteriaCol + 1).setValue(payload.criteria);
+      }
       return;
     }
   }

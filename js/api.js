@@ -38,16 +38,16 @@ async function apiPost(action, payload = {}) {
 }
 
 // ---- Auth ----
-function apiLogin(name, pin) {
-  return apiGet('login', { name, pin });
-}
-function apiGetTeachers() {
-  return apiGet('getTeachers');
+function apiLogin(pin) {
+  return apiGet('login', { pin });
 }
 
 // ---- Jadwal ----
 function apiGetJadwal(teacher, hari) {
   return apiGet('getJadwal', { teacher, hari });
+}
+function apiGetStudentInfo(kelas, student) {
+  return apiGet('getStudentInfo', { kelas, student });
 }
 
 // ---- Submit Laporan ----

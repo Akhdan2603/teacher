@@ -46,14 +46,6 @@ async function initAuthGate() {
   }
 
   renderLoginOverlay_();
-  const res = await apiGetTeachers();
-  const select = document.getElementById('auth-teacher-select');
-  if (res.success && select) {
-    select.innerHTML = '<option value="">-- Pilih Nama --</option>' +
-      res.teachers.map(t => `<option value="${escHtmlAuth_(t)}">${escHtmlAuth_(t)}</option>`).join('');
-  } else if (select) {
-    select.innerHTML = '<option value="">Gagal memuat daftar guru</option>';
-  }
 }
 
 function renderLoginOverlay_() {
@@ -62,30 +54,32 @@ function renderLoginOverlay_() {
   overlay.innerHTML = `
     <div class="auth-box">
       <h2>Meeting Report Generator</h2>
-      <p>Pilih nama Anda dan masukkan PIN untuk masuk.</p>
-      <select id="auth-teacher-select"><option value="">Memuat...</option></select>
-      <input type="password" id="auth-pin-input" placeholder="PIN 4 digit" maxlength="4" inputmode="numeric">
+      <p>Masukkan PIN Anda untuk masuk.</p>
+      <input type="password" id="auth-pin-input" placeholder="PIN 4 digit" maxlength="4" inputmode="numeric" autofocus>
       <button id="auth-login-btn" onclick="handleLoginClick()">Masuk</button>
       <div id="auth-error" class="auth-error"></div>
     </div>
   `;
   document.body.appendChild(overlay);
+
+  // Enter di keyboard HP langsung submit, tidak perlu tap tombol
+  document.getElementById('auth-pin-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleLoginClick();
+  });
 }
 
 async function handleLoginClick() {
-  const name = document.getElementById('auth-teacher-select').value;
   const pin = document.getElementById('auth-pin-input').value;
   const errorEl = document.getElementById('auth-error');
   errorEl.textContent = '';
 
-  if (!name) { errorEl.textContent = 'Pilih nama guru dulu.'; return; }
   if (!pin || pin.length !== 4) { errorEl.textContent = 'PIN harus 4 digit.'; return; }
 
   const btn = document.getElementById('auth-login-btn');
   btn.disabled = true;
   btn.textContent = 'Memeriksa...';
 
-  const res = await apiLogin(name, pin);
+  const res = await apiLogin(pin);
 
   btn.disabled = false;
   btn.textContent = 'Masuk';

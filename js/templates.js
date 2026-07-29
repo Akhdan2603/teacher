@@ -53,15 +53,5 @@ const TEMPLATES_EN = {
 };
 
 // ============================================================
-// TAB SWITCHING
-// ============================================================
-function switchTab(tab) {
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-  document.getElementById('tab-' + tab).classList.add('active');
-  event.target.classList.add('active');
-}
-
-// ============================================================
 // UTILS
 // ============================================================
