@@ -696,13 +696,54 @@ function renderAutoInputs(){
         </div>
         <button class="btn-generate" onclick="generateProgress(${i})" style="margin-top:4px;">${L.generateBtn}</button>
       </div>
-      <textarea id="auto-progress-${i}" placeholder="${L.progressPlaceholder}" oninput="autoStudents[${i}].progress=this.value;autoUpdateTable()" style="min-height:100px">${escHtml(s.progress)}</textarea>`;
+      <textarea id="auto-progress-${i}" placeholder="${L.progressPlaceholder}" oninput="autoStudents[${i}].progress=this.value;autoUpdateTable()" style="min-height:100px">${escHtml(s.progress)}</textarea>
+      <div class="checkpoint-actions">
+        <button type="button" class="btn-checkpoint btn-remind" onclick="handleRequestReminder(${i})">⏰ Ingatkan Report</button>
+        <button type="button" class="btn-checkpoint btn-done" onclick="handleMarkReportDone(${i})">✅ Report Telah Selesai</button>
+      </div>`;
     c.appendChild(div);
     
     populateCourseDropdown(i);
     populateLessonDropdown(i);
   });
   autoUpdateTable();
+}
+
+// ============================================================
+// CHECKPOINT ACTIONS — tombol manual "Ingatkan Report" & "Report Telah Selesai"
+// ============================================================
+async function handleRequestReminder(idx) {
+  const s = autoStudents[idx];
+  const teacher = typeof getCurrentTeacher === 'function' ? getCurrentTeacher() : null;
+  const kelas = document.getElementById('auto-kelas').value;
+
+  if (!teacher) { toast('Sesi login tidak ditemukan, silakan login ulang.', 'error'); return; }
+  if (!kelas || !s.nama) { toast('Isi dulu Kelas dan Nama Murid.', 'error'); return; }
+
+  toast('Mengirim reminder...', 'success');
+  const res = await apiRequestReminder({ teacher, kelas, student: s.nama });
+
+  if (res.success) {
+    const calNote = res.calendarCreated ? ' + undangan Google Calendar' : ' (Calendar dilewati: email guru belum terdaftar)';
+    toast(`Reminder Lesson ${res.checkpoint} terkirim ke Telegram${calNote} ✔`, 'success');
+  } else {
+    toast(res.error || 'Gagal mengirim reminder.', 'error');
+  }
+}
+
+async function handleMarkReportDone(idx) {
+  const s = autoStudents[idx];
+  const kelas = document.getElementById('auto-kelas').value;
+
+  if (!kelas || !s.nama) { toast('Isi dulu Kelas dan Nama Murid.', 'error'); return; }
+
+  const res = await apiMarkReportDone({ kelas, student: s.nama });
+
+  if (res.success) {
+    toast(`Report Lesson ${res.checkpoint} ditandai selesai ✔`, 'success');
+  } else {
+    toast(res.error || 'Gagal menandai selesai (mungkin tidak ada checkpoint pending).', 'error');
+  }
 }
 
 // ============================================================
@@ -799,6 +840,7 @@ async function submitDailyReportToSheet(idx) {
     criteria: s.criteria,
     course: s.course,
     lesson: s.lesson,
+    status: s.status,
     noteText: s.progress,
   });
 

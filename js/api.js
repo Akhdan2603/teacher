@@ -57,6 +57,12 @@ function apiSubmitDaily(payload) {
 function apiSubmitExam(payload) {
   return apiPost('submitExamReport', payload);
 }
+function apiMarkReportDone(payload) {
+  return apiPost('markReportDone', payload);
+}
+function apiRequestReminder(payload) {
+  return apiPost('requestReminder', payload);
+}
 
 // ---- Exam Template ----
 function apiGetExamTemplate(criteria, course, lesson, student, grades) {

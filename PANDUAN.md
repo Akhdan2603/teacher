@@ -88,6 +88,10 @@ Bagikan URL yang muncul ke semua guru.
 2. Per murid: pilih Criteria → Course → Lesson → isi progress → **Generate** (otomatis tersimpan ke sistem)
 3. Upload foto (0, 1, atau 2 foto — layout otomatis menyesuaikan jumlahnya)
 4. **Send to WhatsApp** / **Export PDF**
+5. Kalau lesson yang dipilih persis checkpoint (8/16/24/32/40/48), sistem otomatis catat & kirim reminder pertama ke Telegram guru
+6. Dua tombol tambahan di tiap kartu murid:
+   - **⏰ Ingatkan Report** — klik untuk langsung kirim reminder manual sekarang juga (Google Calendar invite ke email guru + Telegram double-check), tidak perlu nunggu cron harian
+   - **✅ Report Telah Selesai** — klik untuk langsung tandai checkpoint pending TERLAMA sebagai selesai, tanpa harus lewat tab Exam Report (berguna kalau laporannya sudah dibuat di luar sistem)
 
 ### 2.3 Membuat Exam Report
 1. Tab **🎓 Exam Report** → pilih siswa dari daftar pending (atau isi manual)
@@ -141,3 +145,6 @@ Ubah kolom PIN atau `status` (TRUE→FALSE) di tab `Teacher`.
 | Notifikasi Telegram tidak terkirim | Chat ID kosong/salah | Cek Langkah 1.4 |
 | Criteria & Course Exam Report tidak auto-fill | Kolom "Criteria" belum ditambahkan di tab `Student`, atau siswa belum pernah Daily Report | Tambah kolom (lihat TODO.md), atau isi manual |
 | Tombol "Ambil Template dari Sistem" tidak jalan untuk course tertentu | Course itu belum ada di `course-tab-map.js` | Lihat TODO.md |
+| Checkpoint lesson 8 "hilang" setelah lanjut ke lesson 16 | Versi lama (Sheet5) cuma simpan 1 checkpoint terakhir — sudah diperbaiki, pastikan pakai `Code.gs` versi terbaru + kolom `Lesson 8/16/24/...` sudah ditambahkan di tab `Student` | Redeploy Apps Script versi baru |
+| Tombol "Ingatkan Report" gagal bikin Calendar event | Kolom "Email" di tab `Teacher` kosong/belum ada | Tambah kolom Email, isi Gmail guru. Telegram tetap terkirim walau Calendar gagal |
+| Reminder eskalasi (>7 hari) cuma kirim 1x/hari padahal maunya 2x | Cuma ada 1 Time-driven Trigger | Tambah trigger ke-2 di jam berbeda untuk fungsi yang sama |

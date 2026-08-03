@@ -7,29 +7,39 @@
  * Who has access: Anyone), lalu pakai URL-nya di frontend.
  *
  * SETUP WAJIB (sebelum deploy):
- * 1. Buka Project Settings (ikon gear) → Script Properties → tambahkan:
+ * 1. Script Properties (Project Settings ⚙️):
  *      TELEGRAM_TOKEN     = token bot dari BotFather
- *      MAIN_SHEET_ID      = ID spreadsheet "Input data" (Teacher/Jadwal/Student/Log_Laporan/Sheet5)
+ *      MAIN_SHEET_ID      = ID spreadsheet "Input data"
  *      JUNIOR_SHEET_ID    = ID spreadsheet "JUNIORS report templates"
  *      KIDS_SHEET_ID      = ID spreadsheet "KIDS report templates"
  *      TEENS_SHEET_ID     = ID spreadsheet "TEENS report templates"
- *      ADMIN_CHAT_ID      = Chat ID Telegram admin (isi manual setelah admin /start ke bot)
+ *      ADMIN_CHAT_ID      = Chat ID Telegram admin
  *
- *    JANGAN hardcode token/ID langsung di kode ini. Kenapa: kalau repo
- *    ini pernah jadi public GitHub, token akan bocor & bot bisa dibajak
- *    orang lain. Script Properties aman karena tidak ikut ke source code.
+ * 2. Tab `Student` WAJIB punya kolom-kolom ini (nama header persis,
+ *    toleran spasi ekstra/huruf besar-kecil):
+ *      Hari, Kelas, Student, Course, Lesson sekarang, Criteria,
+ *      Status Lesson, Selesai,
+ *      Lesson 8, Report 8, Last Reminder 8,
+ *      Lesson 16, Report 16, Last Reminder 16,
+ *      Lesson 24, Report 24, Last Reminder 24,
+ *      Lesson 32, Report 32, Last Reminder 32,
+ *      Lesson 40, Report 40, Last Reminder 40,
+ *      Lesson 48, Report 48, Last Reminder 48
+ *    (Kalau ada kolom yang belum ditambahkan, fitur terkait kolom itu
+ *    akan di-skip dengan aman, tidak bikin error fatal.)
  *
- * 2. Deploy > New deployment > Web app > Execute as "Me", Access "Anyone".
- *    Copy URL-nya, taruh di js/api.js sebagai GAS_URL.
+ * 3. Tab `Teacher` WAJIB punya kolom "Email" (Gmail guru) untuk fitur
+ *    "Ingatkan Report" (Calendar invite).
  *
- * 3. Buat Time-driven Trigger (Triggers > Add Trigger) untuk fungsi
- *    `cronReminderKelipatan8` — jalankan misalnya tiap hari jam 08:00.
- *    Ini gratis dan tidak butuh Vercel Cron sama sekali.
+ * 4. Deploy > New deployment > Web app > Execute as "Me", Access "Anyone".
+ * 5. Time-driven Trigger untuk `cronReminderKelipatan8` — jalankan
+ *    1-2x/hari (2x/hari supaya mode eskalasi setelah 7 hari beneran
+ *    bisa kirim 2x sehari, bukan cuma 1x).
  * ============================================================
  */
 
 // ------------------------------------------------------------
-// KONFIGURASI (diambil dari Script Properties, bukan hardcode)
+// KONFIGURASI
 // ------------------------------------------------------------
 function getConfig_() {
   const props = PropertiesService.getScriptProperties();
@@ -45,25 +55,19 @@ function getConfig_() {
   };
 }
 
-// Nama tab persis sesuai spreadsheet Anda — jangan diubah tanpa
-// mengubah juga nama tab aslinya di Google Sheets.
 const TABS = {
   TEACHER: 'Teacher',
   JADWAL: 'Jadwal',
   STUDENT: 'Student',
   LOG: 'Log_Laporan',
-  TRIGGER: 'Sheet5',
 };
 
-// ------------------------------------------------------------
-// ENTRY POINTS (dipanggil dari frontend via fetch())
-// ------------------------------------------------------------
+// Checkpoint kelipatan-8 yang di-track. Course terpanjang = 48 lesson.
+const CHECKPOINTS = [8, 16, 24, 32, 40, 48];
 
-/**
- * doGet menangani semua pembacaan data (read-only), pakai query
- * string ?action=... supaya bisa dipanggil langsung dari browser
- * tanpa preflight CORS yang ribet.
- */
+// ------------------------------------------------------------
+// ENTRY POINTS
+// ------------------------------------------------------------
 function doGet(e) {
   const action = e.parameter.action;
   let result;
@@ -109,10 +113,6 @@ function doGet(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-/**
- * doPost menangani semua penulisan data (submit laporan).
- * Body harus JSON: { action: '...', payload: {...} }
- */
 function doPost(e) {
   let result;
   try {
@@ -123,6 +123,12 @@ function doPost(e) {
         break;
       case 'submitExamReport':
         result = submitExamReport(body.payload);
+        break;
+      case 'markReportDone':
+        result = markReportDoneAction(body.payload);
+        break;
+      case 'requestReminder':
+        result = requestReminder(body.payload);
         break;
       default:
         result = { success: false, error: 'Unknown action: ' + body.action };
@@ -136,12 +142,11 @@ function doPost(e) {
 }
 
 // ------------------------------------------------------------
-// AUTH (PIN check — bukan keamanan tingkat tinggi, cuma gerbang
-// identitas ringan sesuai kebutuhan project ini)
+// AUTH
 // ------------------------------------------------------------
 function handleLogin(pin) {
   const sheet = SpreadsheetApp.openById(getConfig_().mainSheetId).getSheetByName(TABS.TEACHER);
-  const rows = sheet.getDataRange().getValues(); // [Name, PIN, Chat ID tele, status]
+  const rows = sheet.getDataRange().getValues();
   const trimmedPin = String(pin).trim();
 
   if (!trimmedPin) return { success: false, error: 'PIN kosong.' };
@@ -154,16 +159,10 @@ function handleLogin(pin) {
     if (isActive && rowPin === trimmedPin) matches.push(String(row[0]).trim());
   }
 
-  if (matches.length === 0) {
-    return { success: false, error: 'PIN tidak ditemukan.' };
-  }
+  if (matches.length === 0) return { success: false, error: 'PIN tidak ditemukan.' };
   if (matches.length > 1) {
-    // Safety-net: PIN dipakai lebih dari 1 guru aktif. Sistem tidak bisa
-    // menebak yang mana, jadi diminta hubungi admin untuk perbaiki data
-    // (PIN wajib unik antar guru sejak login jadi PIN-only, tanpa nama).
     return { success: false, error: `PIN ini terdaftar untuk lebih dari 1 guru (${matches.join(', ')}). Hubungi admin untuk perbaiki PIN di tab Teacher.` };
   }
-
   return { success: true, teacher: matches[0] };
 }
 
@@ -178,14 +177,147 @@ function getTeacherNames() {
 }
 
 // ------------------------------------------------------------
-// PENDING EXAMS — daftar siswa kelipatan-8 milik guru tertentu yang
-// statusnya masih "Belum Dibuat" di Sheet5 (Trigger). Dipakai nanti
-// di tab Exam Report untuk menampilkan "siswa mana yang perlu di-exam".
+// JADWAL
+// ------------------------------------------------------------
+function getJadwalForTeacher(teacher, hari) {
+  const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
+  const jadwalRows = ss.getSheetByName(TABS.JADWAL).getDataRange().getValues();
+  const studentRows = ss.getSheetByName(TABS.STUDENT).getDataRange().getValues();
+
+  const studentIndex = {};
+  for (let i = 1; i < studentRows.length; i++) {
+    const [sHari, sKelas, sStudent, sCourse, sLesson] = studentRows[i];
+    studentIndex[`${sHari}|${sKelas}|${sStudent}`] = { course: sCourse, lesson: sLesson };
+  }
+
+  const classMap = {};
+  for (let i = 1; i < jadwalRows.length; i++) {
+    const [rTeacher, rHari, rKelas, rStudent] = jadwalRows[i];
+    if (String(rTeacher).trim().toLowerCase() !== String(teacher).trim().toLowerCase()) continue;
+    if (String(rHari).trim().toLowerCase() !== String(hari).trim().toLowerCase()) continue;
+
+    if (!classMap[rKelas]) classMap[rKelas] = [];
+    const extra = studentIndex[`${rHari}|${rKelas}|${rStudent}`] || {};
+    classMap[rKelas].push({ nama: rStudent, course: extra.course || '', lesson: extra.lesson || '' });
+  }
+
+  return { success: true, kelas: classMap };
+}
+
+// ------------------------------------------------------------
+// SUBMIT DAILY REPORT
+// payload: { teacher, hari, kelas, student, criteria, course, lesson, status, noteText }
+// ------------------------------------------------------------
+function submitDailyReport(payload) {
+  validatePayload_(payload, ['teacher', 'hari', 'kelas', 'student', 'course', 'lesson']);
+  const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
+
+  updateStudentRow_(ss, payload.hari, payload.kelas, payload.student, payload.course, payload.lesson, payload.criteria, payload.status);
+  updateLogRow_(ss, payload, 'Daily', payload.noteText || '');
+
+  const lessonNum = parseInt(payload.lesson, 10);
+  if (CHECKPOINTS.indexOf(lessonNum) !== -1) {
+    const marked = markLessonCheckpoint_(ss, payload.kelas, payload.student, lessonNum);
+    if (marked.justMarked) {
+      notifyTeacherExamDue_(payload.teacher, payload.student, payload.kelas, payload.course, lessonNum);
+    }
+  }
+
+  return { success: true };
+}
+
+// ------------------------------------------------------------
+// SUBMIT EXAM REPORT (dari tab Exam Report)
+// ------------------------------------------------------------
+function submitExamReport(payload) {
+  validatePayload_(payload, ['teacher', 'kelas', 'student', 'course']);
+  const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
+
+  const hari = findHariForStudent_(ss, payload.kelas, payload.student);
+  if (!hari) {
+    throw new Error(`Tidak bisa menentukan hari untuk siswa "${payload.student}" di kelas "${payload.kelas}". Pastikan siswa ini terdaftar di tab Student.`);
+  }
+  const fullPayload = Object.assign({}, payload, { hari });
+  updateLogRow_(ss, fullPayload, 'Exam', payload.noteText || '');
+
+  const result = markReportDone_(ss, payload.kelas, payload.student);
+  return { success: true, checkpoint: result.checkpoint };
+}
+
+// ------------------------------------------------------------
+// MANUAL: tombol "Report Telah Selesai" di halaman Daily Report.
+// ------------------------------------------------------------
+function markReportDoneAction(payload) {
+  validatePayload_(payload, ['kelas', 'student']);
+  const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
+  const result = markReportDone_(ss, payload.kelas, payload.student);
+  return { success: true, checkpoint: result.checkpoint };
+}
+
+// ------------------------------------------------------------
+// MANUAL: tombol "Ingatkan Report" — Calendar invite + Telegram double-check.
+// ------------------------------------------------------------
+function requestReminder(payload) {
+  validatePayload_(payload, ['teacher', 'kelas', 'student']);
+  const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
+
+  const sheet = ss.getSheetByName(TABS.STUDENT);
+  const rows = sheet.getDataRange().getValues();
+  const header = rows[0];
+  const colIndex = buildStudentColumnIndex_(header);
+
+  let checkpoint = null, courseVal = '';
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][1] === payload.kelas && rows[i][2] === payload.student) {
+      checkpoint = computePendingCheckpoint_(rows[i], colIndex);
+      courseVal = rows[i][3];
+      break;
+    }
+  }
+  if (!checkpoint) {
+    throw new Error(`Siswa "${payload.student}" (${payload.kelas}) tidak sedang punya checkpoint Exam Report yang pending.`);
+  }
+
+  const teacherEmail = getTeacherEmail_(ss, payload.teacher);
+  if (teacherEmail) {
+    const now = new Date();
+    const start = new Date(now.getTime() + 60 * 60 * 1000);
+    const end = new Date(start.getTime() + 30 * 60 * 1000);
+    CalendarApp.getDefaultCalendar().createEvent(
+      `📌 Reminder: Buat Exam Report — ${payload.student}`,
+      start, end,
+      {
+        description: `Siswa ${payload.student} (${payload.kelas}, ${courseVal}) sudah mencapai checkpoint Lesson ${checkpoint}. Tolong buatkan Exam Report-nya.`,
+        guests: teacherEmail,
+        sendInvites: true,
+      }
+    );
+  }
+
+  notifyTeacherExamDue_(payload.teacher, payload.student, payload.kelas, courseVal, checkpoint);
+
+  return { success: true, checkpoint, calendarCreated: !!teacherEmail };
+}
+
+function getTeacherEmail_(ss, teacher) {
+  const rows = ss.getSheetByName(TABS.TEACHER).getDataRange().getValues();
+  const header = rows[0];
+  const emailCol = findColumnIndex_(header, 'Email');
+  if (emailCol === -1) return null;
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).toLowerCase() === String(teacher).toLowerCase()) {
+      return rows[i][emailCol] || null;
+    }
+  }
+  return null;
+}
+
+// ------------------------------------------------------------
+// PENDING EXAMS
 // ------------------------------------------------------------
 function getPendingExamsForTeacher(teacher) {
   const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
 
-  // kumpulkan semua nama kelas yang diampu guru ini (dari tab Jadwal)
   const jadwalRows = ss.getSheetByName(TABS.JADWAL).getDataRange().getValues();
   const myClasses = new Set();
   for (let i = 1; i < jadwalRows.length; i++) {
@@ -194,102 +326,21 @@ function getPendingExamsForTeacher(teacher) {
     }
   }
 
-  const triggerRows = ss.getSheetByName(TABS.TRIGGER).getDataRange().getValues();
-  const pending = [];
-  for (let i = 1; i < triggerRows.length; i++) {
-    const [kelas, student, course, lesson, status] = triggerRows[i];
-    if (status === 'Belum Dibuat' && myClasses.has(kelas)) {
-      pending.push({ kelas, student, course, lesson });
-    }
-  }
+  const sheet = ss.getSheetByName(TABS.STUDENT);
+  const rows = sheet.getDataRange().getValues();
+  const header = rows[0];
+  const colIndex = buildStudentColumnIndex_(header);
 
+  const pending = [];
+  for (let i = 1; i < rows.length; i++) {
+    const kelas = rows[i][1], student = rows[i][2], course = rows[i][3];
+    if (!myClasses.has(kelas)) continue;
+    const checkpoint = computePendingCheckpoint_(rows[i], colIndex);
+    if (checkpoint) pending.push({ kelas, student, course, lesson: checkpoint });
+  }
   return { success: true, pending };
 }
 
-// ------------------------------------------------------------
-// JADWAL — gabungkan tab Jadwal (Teacher,Hari,Kelas,Student)
-// dengan tab Student (Hari,Kelas,Student,Course,Lesson sekarang)
-// supaya frontend dapat 1 payload lengkap per murid.
-// ------------------------------------------------------------
-function getJadwalForTeacher(teacher, hari) {
-  const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
-  const jadwalRows = ss.getSheetByName(TABS.JADWAL).getDataRange().getValues();
-  const studentRows = ss.getSheetByName(TABS.STUDENT).getDataRange().getValues();
-
-  // index tab Student by "Hari|Kelas|Student" untuk lookup cepat
-  const studentIndex = {};
-  for (let i = 1; i < studentRows.length; i++) {
-    const [sHari, sKelas, sStudent, sCourse, sLesson] = studentRows[i];
-    studentIndex[`${sHari}|${sKelas}|${sStudent}`] = { course: sCourse, lesson: sLesson };
-  }
-
-  const classMap = {}; // { "T14B": [ {nama, course, lesson}, ... ] }
-  for (let i = 1; i < jadwalRows.length; i++) {
-    const [rTeacher, rHari, rKelas, rStudent] = jadwalRows[i];
-    if (String(rTeacher).trim().toLowerCase() !== String(teacher).trim().toLowerCase()) continue;
-    if (String(rHari).trim().toLowerCase() !== String(hari).trim().toLowerCase()) continue;
-
-    if (!classMap[rKelas]) classMap[rKelas] = [];
-    const extra = studentIndex[`${rHari}|${rKelas}|${rStudent}`] || {};
-    classMap[rKelas].push({
-      nama: rStudent,
-      course: extra.course || '',
-      lesson: extra.lesson || '',
-    });
-  }
-
-  return { success: true, kelas: classMap };
-}
-
-// ------------------------------------------------------------
-// SUBMIT DAILY REPORT
-// payload: { teacher, hari, kelas, student, criteria, course, lesson, noteText }
-// ------------------------------------------------------------
-function submitDailyReport(payload) {
-  validatePayload_(payload, ['teacher', 'hari', 'kelas', 'student', 'course', 'lesson']);
-  const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
-
-  // 1. Update tab Student: isi Course, Lesson sekarang, & Criteria (state terbaru murid ini)
-  updateStudentRow_(ss, payload.hari, payload.kelas, payload.student, payload.course, payload.lesson, payload.criteria);
-
-  // 2. Update tab Log_Laporan: tulis noteText ke kolom "Daily" (in-place, bukan append)
-  updateLogRow_(ss, payload, 'Daily', payload.noteText || '');
-
-  // 3. Cek kelipatan 8 → update Sheet5 + kirim reminder Telegram ke guru
-  const lessonNum = parseInt(payload.lesson, 10);
-  if (!isNaN(lessonNum) && lessonNum > 0 && lessonNum % 8 === 0) {
-    markExamTrigger_(ss, payload);
-    notifyTeacherExamDue_(payload);
-  }
-
-  return { success: true };
-}
-
-// ------------------------------------------------------------
-// SUBMIT EXAM REPORT
-// payload: { teacher, hari, kelas, student, criteria, course, noteText }
-// ------------------------------------------------------------
-function submitExamReport(payload) {
-  validatePayload_(payload, ['teacher', 'kelas', 'student', 'course']);
-  const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
-
-  // Exam Report tidak menanyakan "hari" ke guru (tidak relevan secara UX di
-  // tab ini) — tapi baris di Log_Laporan diindeks berdasarkan Hari+Kelas+Student.
-  // Jadi kita resolve hari-nya otomatis dari tab Student, bukan menebak di frontend.
-  const hari = findHariForStudent_(ss, payload.kelas, payload.student);
-  if (!hari) {
-    throw new Error(`Tidak bisa menentukan hari untuk siswa "${payload.student}" di kelas "${payload.kelas}". Pastikan siswa ini terdaftar di tab Student.`);
-  }
-  const fullPayload = Object.assign({}, payload, { hari });
-
-  updateLogRow_(ss, fullPayload, 'Exam', payload.noteText || '');
-  clearExamTrigger_(ss, fullPayload); // tandai "Sudah Dibuat" di Sheet5
-
-  return { success: true };
-}
-
-// Cari hari (Senin/Selasa/dst) untuk kombinasi kelas+student tertentu,
-// dengan melihat tab Student (Hari,Kelas,Student,Course,Lesson sekarang).
 function findHariForStudent_(ss, kelas, student) {
   const rows = ss.getSheetByName(TABS.STUDENT).getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -298,10 +349,6 @@ function findHariForStudent_(ss, kelas, student) {
   return null;
 }
 
-// Validasi field wajib ada & tidak kosong sebelum ditulis ke Sheets.
-// Dilempar sebagai Error biasa supaya tertangkap oleh try/catch di
-// doPost dan dikembalikan sebagai { success:false, error: ... } yang
-// jelas ke frontend, bukan gagal diam-diam / menulis data setengah jadi.
 function validatePayload_(payload, requiredFields) {
   if (!payload) throw new Error('Payload kosong.');
   const missing = requiredFields.filter(f => !payload[f] && payload[f] !== 0);
@@ -311,38 +358,44 @@ function validatePayload_(payload, requiredFields) {
 }
 
 // ------------------------------------------------------------
-// HELPER: update 1 baris di tab Student berdasarkan Hari+Kelas+Student
+// HELPER: update Course/Lesson/Criteria/Status Lesson di tab Student
 // ------------------------------------------------------------
-function updateStudentRow_(ss, hari, kelas, student, course, lesson, criteria) {
+function updateStudentRow_(ss, hari, kelas, student, course, lesson, criteria, status) {
   const sheet = ss.getSheetByName(TABS.STUDENT);
   const rows = sheet.getDataRange().getValues();
   const header = rows[0];
-  const criteriaCol = findColumnIndex_(header, 'Criteria'); // -1 kalau kolomnya belum ditambahkan user
+  const colIndex = buildStudentColumnIndex_(header);
 
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][0] === hari && rows[i][1] === kelas && rows[i][2] === student) {
-      sheet.getRange(i + 1, 4).setValue(course);  // kolom D: Course
-      sheet.getRange(i + 1, 5).setValue(lesson);  // kolom E: Lesson sekarang
-      if (criteriaCol !== -1 && criteria) {
-        sheet.getRange(i + 1, criteriaCol + 1).setValue(criteria);
+      sheet.getRange(i + 1, 4).setValue(course);
+      sheet.getRange(i + 1, 5).setValue(lesson);
+      if (colIndex.criteria !== -1 && criteria) {
+        sheet.getRange(i + 1, colIndex.criteria + 1).setValue(criteria);
+      }
+      if (colIndex.statusLesson !== -1 && status) {
+        sheet.getRange(i + 1, colIndex.statusLesson + 1).setValue(mapStatusLabel_(status));
       }
       return;
     }
   }
 }
 
+function mapStatusLabel_(status) {
+  if (status === 'done' || status === 'double') return 'Completed';
+  if (status === 'in_progress' || status === 'one_and_half') return 'On Going';
+  return status || '';
+}
+
 // ------------------------------------------------------------
-// Ambil data TERAKHIR (criteria, course, lesson) yang tersimpan untuk
-// 1 siswa di tab Student — dipakai Exam Report supaya guru tidak perlu
-// pilih ulang Criteria & Course secara manual (sudah otomatis dari
-// submission Daily Report paling akhir untuk siswa ini).
+// Ambil data TERAKHIR (criteria, course, lesson) untuk 1 siswa
 // ------------------------------------------------------------
 function getStudentLatestInfo(kelas, student) {
   const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
   const sheet = ss.getSheetByName(TABS.STUDENT);
   const rows = sheet.getDataRange().getValues();
   const header = rows[0];
-  const criteriaCol = findColumnIndex_(header, 'Criteria');
+  const colIndex = buildStudentColumnIndex_(header);
 
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][1] === kelas && rows[i][2] === student) {
@@ -350,7 +403,7 @@ function getStudentLatestInfo(kelas, student) {
         success: true,
         course: rows[i][3] || '',
         lesson: rows[i][4] || '',
-        criteria: criteriaCol !== -1 ? (rows[i][criteriaCol] || '') : '',
+        criteria: colIndex.criteria !== -1 ? (rows[i][colIndex.criteria] || '') : '',
       };
     }
   }
@@ -358,12 +411,12 @@ function getStudentLatestInfo(kelas, student) {
 }
 
 // ------------------------------------------------------------
-// HELPER: update 1 baris di tab Log_Laporan (kolom Daily/Exam diisi teks)
+// HELPER: update 1 baris di tab Log_Laporan (kolom Daily/Exam)
 // ------------------------------------------------------------
 function updateLogRow_(ss, payload, columnName, noteText) {
   const sheet = ss.getSheetByName(TABS.LOG);
   const rows = sheet.getDataRange().getValues();
-  const header = rows[0]; // Teacher,Hari,Kelas,Student,Course,Lesson sekarang,Daily,Exam
+  const header = rows[0];
   const colIndex = findColumnIndex_(header, columnName);
 
   if (colIndex === -1) {
@@ -372,8 +425,8 @@ function updateLogRow_(ss, payload, columnName, noteText) {
 
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][1] === payload.hari && rows[i][2] === payload.kelas && rows[i][3] === payload.student) {
-      sheet.getRange(i + 1, 5).setValue(payload.course);   // Course
-      sheet.getRange(i + 1, 6).setValue(payload.lesson);   // Lesson sekarang
+      sheet.getRange(i + 1, 5).setValue(payload.course);
+      sheet.getRange(i + 1, 6).setValue(payload.lesson);
       sheet.getRange(i + 1, colIndex + 1).setValue(noteText);
       const criteriaCol = findColumnIndex_(header, 'Criteria');
       if (criteriaCol !== -1 && payload.criteria) {
@@ -385,9 +438,6 @@ function updateLogRow_(ss, payload, columnName, noteText) {
   throw new Error(`Baris untuk siswa "${payload.student}" (${payload.kelas}, ${payload.hari}) tidak ditemukan di tab Log_Laporan.`);
 }
 
-// Cari index kolom berdasarkan nama header, toleran terhadap spasi
-// ekstra/huruf besar-kecil (menghindari bug rapuh kalau header sheet
-// aslinya punya spasi tak terlihat, misal "Daily " vs "Daily").
 function findColumnIndex_(header, targetName) {
   const normalizedTarget = String(targetName).replace(/\s+/g, ' ').trim().toLowerCase();
   for (let i = 0; i < header.length; i++) {
@@ -398,35 +448,83 @@ function findColumnIndex_(header, targetName) {
 }
 
 // ------------------------------------------------------------
-// HELPER: tandai / hapus trigger kelipatan-8 di Sheet5
-// Sheet5 kolom: Kelas, Student, Course, Lesson sekarang, Status, Terakhir Diingatkan
+// CHECKPOINT TRACKING (tab Student)
 // ------------------------------------------------------------
-function markExamTrigger_(ss, payload) {
-  const sheet = ss.getSheetByName(TABS.TRIGGER);
-  const rows = sheet.getDataRange().getValues();
-
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === payload.kelas && rows[i][1] === payload.student) {
-      sheet.getRange(i + 1, 3).setValue(payload.course);
-      sheet.getRange(i + 1, 4).setValue(payload.lesson);
-      sheet.getRange(i + 1, 5).setValue('Belum Dibuat');
-      sheet.getRange(i + 1, 6).setValue(new Date());
-      return;
-    }
-  }
-  // Kalau belum ada baris untuk siswa ini, tambahkan baru
-  sheet.appendRow([payload.kelas, payload.student, payload.course, payload.lesson, 'Belum Dibuat', new Date()]);
+function buildStudentColumnIndex_(header) {
+  const idx = {
+    selesai: findColumnIndex_(header, 'Selesai'),
+    statusLesson: findColumnIndex_(header, 'Status Lesson'),
+    criteria: findColumnIndex_(header, 'Criteria'),
+  };
+  CHECKPOINTS.forEach(cp => {
+    idx['lesson' + cp] = findColumnIndex_(header, 'Lesson ' + cp);
+    idx['report' + cp] = findColumnIndex_(header, 'Report ' + cp);
+    idx['reminder' + cp] = findColumnIndex_(header, 'Last Reminder ' + cp);
+  });
+  return idx;
 }
 
-function clearExamTrigger_(ss, payload) {
-  const sheet = ss.getSheetByName(TABS.TRIGGER);
+function isTrue_(v) {
+  return v === true || String(v).toUpperCase() === 'TRUE';
+}
+
+function computePendingCheckpoint_(row, colIndex) {
+  if (colIndex.selesai !== -1 && isTrue_(row[colIndex.selesai])) return null;
+  for (let i = 0; i < CHECKPOINTS.length; i++) {
+    const cp = CHECKPOINTS[i];
+    const lessonCol = colIndex['lesson' + cp];
+    const reportCol = colIndex['report' + cp];
+    if (lessonCol === -1 || reportCol === -1) continue;
+    const lessonVal = row[lessonCol];
+    const reportVal = row[reportCol];
+    if (lessonVal && !isTrue_(reportVal)) return cp;
+  }
+  return null;
+}
+
+function markLessonCheckpoint_(ss, kelas, student, lessonNum) {
+  const sheet = ss.getSheetByName(TABS.STUDENT);
   const rows = sheet.getDataRange().getValues();
+  const header = rows[0];
+  const colIndex = buildStudentColumnIndex_(header);
+
   for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === payload.kelas && rows[i][1] === payload.student && rows[i][2] === payload.course) {
-      sheet.getRange(i + 1, 5).setValue('Sudah Dibuat');
-      return;
+    if (rows[i][1] === kelas && rows[i][2] === student) {
+      if (colIndex.selesai !== -1 && isTrue_(rows[i][colIndex.selesai])) {
+        return { justMarked: false, reason: 'course sudah ditandai Selesai' };
+      }
+      const lessonCol = colIndex['lesson' + lessonNum];
+      if (lessonCol === -1) return { justMarked: false, reason: `kolom "Lesson ${lessonNum}" tidak ditemukan di tab Student` };
+      if (rows[i][lessonCol]) return { justMarked: false, reason: 'checkpoint ini sudah pernah ditandai sebelumnya' };
+
+      sheet.getRange(i + 1, lessonCol + 1).setValue(new Date());
+      return { justMarked: true, checkpoint: lessonNum };
     }
   }
+  return { justMarked: false, reason: 'siswa tidak ditemukan di tab Student' };
+}
+
+function markReportDone_(ss, kelas, student) {
+  const sheet = ss.getSheetByName(TABS.STUDENT);
+  const rows = sheet.getDataRange().getValues();
+  const header = rows[0];
+  const colIndex = buildStudentColumnIndex_(header);
+
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][1] === kelas && rows[i][2] === student) {
+      const checkpoint = computePendingCheckpoint_(rows[i], colIndex);
+      if (!checkpoint) {
+        throw new Error(`Tidak ada checkpoint Exam Report yang pending untuk siswa "${student}" (${kelas}).`);
+      }
+      const reportCol = colIndex['report' + checkpoint];
+      if (reportCol === -1) {
+        throw new Error(`Kolom "Report ${checkpoint}" tidak ditemukan di tab Student.`);
+      }
+      sheet.getRange(i + 1, reportCol + 1).setValue(true);
+      return { checkpoint };
+    }
+  }
+  throw new Error(`Siswa "${student}" (${kelas}) tidak ditemukan di tab Student.`);
 }
 
 // ------------------------------------------------------------
@@ -442,18 +540,17 @@ function sendTelegramMessage_(chatId, text) {
   });
 }
 
-function notifyTeacherExamDue_(payload) {
+function notifyTeacherExamDue_(teacher, student, kelas, course, checkpoint) {
   const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
-  const teacherSheet = ss.getSheetByName(TABS.TEACHER);
-  const rows = teacherSheet.getDataRange().getValues();
+  const rows = ss.getSheetByName(TABS.TEACHER).getDataRange().getValues();
 
   for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).toLowerCase() === String(payload.teacher).toLowerCase()) {
+    if (String(rows[i][0]).toLowerCase() === String(teacher).toLowerCase()) {
       const chatId = rows[i][2];
       if (chatId) {
         sendTelegramMessage_(
           chatId,
-          `📌 <b>Pengingat Exam Report</b>\n${payload.student} (${payload.kelas}) sudah menyelesaikan lesson ${payload.lesson} di ${payload.course}.\nTolong buatkan Exam Report-nya ya!`
+          `📌 <b>Pengingat Exam Report</b>\n${student} (${kelas}) sudah menyelesaikan Lesson ${checkpoint} di ${course}.\nTolong buatkan Exam Report-nya ya!`
         );
       }
       return;
@@ -462,43 +559,55 @@ function notifyTeacherExamDue_(payload) {
 }
 
 // ------------------------------------------------------------
-// CRON — dipanggil oleh Time-driven Trigger (bukan Vercel Cron)
-// Jalan tiap hari, tapi hanya benar-benar kirim pesan kalau sudah
-// >= 2 hari sejak "Terakhir Diingatkan" (spam tiap 2 hari sesuai request).
+// CRON — Time-driven Trigger, jalankan 1-2x/hari.
 // ------------------------------------------------------------
 function cronReminderKelipatan8() {
   const config = getConfig_();
   const ss = SpreadsheetApp.openById(config.mainSheetId);
-  const sheet = ss.getSheetByName(TABS.TRIGGER);
+  const sheet = ss.getSheetByName(TABS.STUDENT);
   const rows = sheet.getDataRange().getValues();
+  const header = rows[0];
+  const colIndex = buildStudentColumnIndex_(header);
   const now = new Date();
   const belumDibuatList = [];
 
   for (let i = 1; i < rows.length; i++) {
-    const [kelas, student, course, lesson, status, lastReminded] = rows[i];
-    if (status !== 'Belum Dibuat') continue;
+    const kelas = rows[i][1], student = rows[i][2], course = rows[i][3];
+    const checkpoint = computePendingCheckpoint_(rows[i], colIndex);
+    if (!checkpoint) continue;
 
-    belumDibuatList.push(`- ${student} (${kelas}, ${course}, Lesson ${lesson})`);
+    const lessonCol = colIndex['lesson' + checkpoint];
+    const reminderCol = colIndex['reminder' + checkpoint];
+    const lessonDate = rows[i][lessonCol];
+    const lastReminded = reminderCol !== -1 ? rows[i][reminderCol] : null;
 
-    const daysSince = lastReminded ? (now - new Date(lastReminded)) / (1000 * 60 * 60 * 24) : 999;
-    if (daysSince >= 2) {
-      const teacher = findTeacherForClass_(ss, kelas);
-      if (teacher && teacher.chatId) {
+    const daysPending = lessonDate ? (now - new Date(lessonDate)) / 86400000 : 0;
+    const daysSinceReminder = lastReminded ? (now - new Date(lastReminded)) / 86400000 : Infinity;
+    const escalated = daysPending >= 7;
+
+    belumDibuatList.push(`- ${student} (${kelas}, ${course}, Lesson ${checkpoint})${escalated ? ' ⚠️ SUDAH ' + Math.floor(daysPending) + ' HARI' : ''}`);
+
+    const threshold = escalated ? 0.4 : 1;
+    if (daysSinceReminder >= threshold) {
+      const teacherInfo = findTeacherForClass_(ss, kelas);
+      if (teacherInfo && teacherInfo.chatId) {
+        const msg = escalated
+          ? `🚨 <b>URGENT — Sudah ${Math.floor(daysPending)} hari!</b>\n${student} (${kelas}) di ${course} BELUM dibuatkan Exam Report untuk Lesson ${checkpoint}. Mohon segera diselesaikan.`
+          : `⏰ <b>Reminder Exam Report</b>\n${student} (${kelas}) di ${course} masih menunggu Exam Report Lesson ${checkpoint} kamu.`;
+        sendTelegramMessage_(teacherInfo.chatId, msg);
+      }
+      if (escalated && config.adminChatId) {
         sendTelegramMessage_(
-          teacher.chatId,
-          `⏰ <b>Reminder Exam Report</b>\n${student} (${kelas}) di ${course} masih menunggu Exam Report kamu.`
+          config.adminChatId,
+          `🚨 <b>Eskalasi (>7 hari)</b>: ${student} (${kelas}, guru: ${teacherInfo ? teacherInfo.name : '?'}) — Lesson ${checkpoint}, ${course}, sudah ${Math.floor(daysPending)} hari belum di-Exam Report.`
         );
       }
-      sheet.getRange(i + 1, 6).setValue(now);
+      if (reminderCol !== -1) sheet.getRange(i + 1, reminderCol + 1).setValue(now);
     }
   }
 
-  // Notifikasi admin: daftar lengkap siswa yang masih belum dibuatkan report
   if (belumDibuatList.length > 0 && config.adminChatId) {
-    sendTelegramMessage_(
-      config.adminChatId,
-      `📋 <b>Daftar Siswa Belum Exam Report</b>\n${belumDibuatList.join('\n')}`
-    );
+    sendTelegramMessage_(config.adminChatId, `📋 <b>Rekap Semua Siswa Belum Exam Report</b>\n${belumDibuatList.join('\n')}`);
   }
 }
 

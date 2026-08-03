@@ -569,3 +569,22 @@ body:not(.auth-ok) .topnav, body:not(.auth-ok) .tab-bar, body:not(.auth-ok) .app
 
 /* Exam Report main content column (sidebar sudah fixed-width 400px & flex-shrink:0) */
 .main-panel { flex: 1; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+/* ============================================================
+   CHECKPOINT ACTIONS — tombol "Ingatkan Report" & "Report Telah Selesai"
+   ============================================================ */
+.checkpoint-actions {
+  display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;
+}
+.btn-checkpoint {
+  flex: 1; min-width: 140px; padding: 9px 10px; border-radius: var(--radius-sm);
+  font-size: 12.5px; font-weight: 700; cursor: pointer; border: 1px solid transparent;
+}
+.btn-checkpoint.btn-remind {
+  background: #fff7ed; color: #c2410c; border-color: #fed7aa;
+}
+.btn-checkpoint.btn-remind:hover { background: #ffedd5; }
+.btn-checkpoint.btn-done {
+  background: var(--g50); color: var(--g700); border-color: var(--g200);
+}
+.btn-checkpoint.btn-done:hover { background: var(--g100); }
