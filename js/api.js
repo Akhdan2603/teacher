@@ -18,23 +18,17 @@ async function apiGet(action, params = {}) {
   }
 }
 
+// PENTING: fungsi ini bernama "apiPost" untuk kompatibilitas kode lama,
+// TAPI implementasinya sekarang mengirim via GET (query string), bukan
+// benar-benar HTTP POST. Alasan: Google Apps Script Web App melakukan
+// redirect internal (.../exec -> script.googleusercontent.com), dan pada
+// beberapa kondisi browser mengikuti redirect itu dengan mengubah method
+// POST jadi GET SEKALIGUS MEMBUANG body-nya — request sampai ke server
+// tapi tanpa data (makanya action-nya kebaca "undefined" di backend).
+// GET tidak punya masalah ini sama sekali karena tidak ada body yang bisa
+// hilang. Semua field di payload diserialisasi jadi query parameter.
 async function apiPost(action, payload = {}) {
-  try {
-    // PENTING: sengaja TIDAK set header 'Content-Type: application/json'.
-    // Google Apps Script Web App tidak menangani CORS preflight (OPTIONS)
-    // dengan baik. Body string tanpa Content-Type eksplisit dikirim browser
-    // sebagai 'text/plain', yang dianggap "simple request" sehingga TIDAK
-    // memicu preflight — request langsung berhasil. Jangan diubah ke
-    // application/json kecuali sudah menambahkan doOptions() di Code.gs.
-    const res = await fetch(GAS_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action, payload }),
-    });
-    return await res.json();
-  } catch (err) {
-    console.error('API POST error:', err);
-    return { success: false, error: 'Tidak bisa terhubung ke server. Cek koneksi internet.' };
-  }
+  return apiGet(action, payload);
 }
 
 // ---- Auth ----
@@ -71,5 +65,16 @@ function apiGetExamTemplate(criteria, course, lesson, student, grades) {
     gradeLiteracy: grades.literacy || 'B',
     gradeApplication: grades.application || 'B',
     gradeCharacter: grades.character || 'B',
+  });
+}
+
+// ---- AI Exam Text (Gemini, dengan fallback ke VARIASI manual kalau gagal) ----
+function apiGetAIExamText(course, lesson, student, grades, objectives) {
+  return apiGet('getAIExamText', {
+    course, lesson, student,
+    gradeLiteracy: grades.literacy || 'B',
+    gradeApplication: grades.application || 'B',
+    gradeCharacter: grades.character || 'B',
+    objectives: JSON.stringify(objectives),
   });
 }

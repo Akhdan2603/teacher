@@ -1,66 +1,60 @@
 # TODO — Timedoor Report Generator
 
-## 🆕 WAJIB: Skema Kolom Baru di Tab `Student` (Sistem Checkpoint)
+## 🆕 WAJIB: Setup Gemini AI (fitur "Generate dengan AI" di Exam Report)
 
-Bug lama (Sheet5 cuma simpan 1 checkpoint terakhir, jadi checkpoint sebelumnya
-ketimpa) sudah diperbaiki dengan pindah tracking ke tab `Student`, per-checkpoint
-punya kolom sendiri supaya tidak saling menimpa. Header **harus persis** ini
-(toleran spasi ekstra/huruf besar-kecil, tapi kata-katanya harus sama):
+- [ ] Buka [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → buat API key (gratis, tanpa kartu kredit)
+- [ ] Tambah Script Property baru: `GEMINI_API_KEY` = key tadi
+- [ ] Redeploy Apps Script (New version)
+- [ ] Kalau API key belum diisi / gagal / limit habis → otomatis fallback ke sistem VARIASI manual, TIDAK error fatal
+
+## 🆕 PERUBAHAN: Reminder Timing (Bug Perbaikan + Desain Baru)
+
+Desain reminder diubah total:
+- **Sebelum**: notifikasi langsung begitu checkpoint (lesson 8/16/dst) terdeteksi, lalu reminder harian, eskalasi 2x/hari setelah 7 hari
+- **Sekarang**: TIDAK ada notifikasi langsung. Reminder PERTAMA dikirim **3 hari setelah** checkpoint tercapai, lalu diulang **tiap 3 hari sekali** selama masih pending. Semua reminder terjadwal lewat 1 cron **jam 8 pagi**.
+
+- [ ] **Redeploy Apps Script** — `cronReminderKelipatan8` sudah ditulis ulang total
+- [ ] Kalau sebelumnya Anda sempat pasang **2 trigger** (untuk mode eskalasi 2x/hari versi lama), **hapus salah satunya** — sekarang cukup **1 trigger, jam 08:00 pagi saja**
+- [ ] Tombol manual "⏰ Ingatkan Report" TETAP kirim reminder instan kapan saja (tidak terikat jadwal 3 hari ini — itu untuk kasus guru mau reminder di luar jadwal otomatis)
+
+## 🔴 Bug "Unknown action: undefined" — Redeploy Checklist
+
+Kalau masih muncul setelah update kemarin, cek urutan ini:
+1. [ ] `js/api.js` — pastikan `apiPost` sudah versi GET-based (cek ada komentar "PENTING: fungsi ini bernama apiPost...")
+2. [ ] `Code.gs` — pastikan action mutasi (`submitDailyReport`, dst) ada di `doGet`, bukan cuma di `doPost`
+3. [ ] Deploy → Manage deployments → ✏️ → Version: **New version** → Deploy (BUKAN cuma Save)
+4. [ ] Hard refresh browser (Ctrl+Shift+R)
+5. [ ] Kalau MASIH error persis sama setelah 4 langkah ini beneran dilakukan, kasih tahu saya — berarti ada penyebab lain yang perlu digali lebih dalam
+
+## 🆕 WAJIB (dari update sebelumnya): Skema Kolom Tab `Student`
 
 | Kolom | Isi |
 |---|---|
-| Hari, Kelas, Student, Course, Lesson sekarang, Criteria | *(sudah ada)* |
-| **Status Lesson** | BARU — auto-terisi "Completed"/"On Going" tiap submit Daily Report |
-| **Selesai** | *(sudah Anda buat)* — TRUE manual kalau course ini sudah tuntas total |
-| **Lesson 8** | timestamp otomatis saat lesson 8 pertama kali tercapai (kosong = belum) |
-| **Report 8** | TRUE/FALSE — exam report utk checkpoint 8 sudah dibuat |
-| **Last Reminder 8** | *(sudah Anda buat)* — timestamp reminder terakhir utk checkpoint 8 |
-| ... pola yang sama untuk **16, 24, 32, 40, 48** | (total 6×3 = 18 kolom checkpoint) |
+| Status Lesson | auto: "Completed"/"On Going" |
+| Selesai | manual TRUE/FALSE — course tuntas total |
+| Lesson 8/16/24/32/40/48 | timestamp otomatis saat checkpoint tercapai |
+| Report 8/16/24/32/40/48 | TRUE/FALSE — exam report checkpoint itu sudah dibuat |
+| Last Reminder 8/16/24/32/40/48 | timestamp reminder terakhir per checkpoint |
 
-- [ ] Tambah kolom **Status Lesson** (belum pernah dibuat sebelumnya)
-- [ ] Tambah kolom **Lesson 8/16/24/32/40/48** (timestamp, biarkan kosong dulu untuk siswa lama)
-- [ ] Tambah kolom **Report 8/16/24/32/40/48** (checkbox TRUE/FALSE, default kosong/FALSE)
-- [x] Kolom **Last Reminder 8/16/24/32/40/48** — sudah Anda buat
-- [x] Kolom **Selesai** — sudah Anda buat
-- [ ] **`Sheet5` (Trigger) sudah TIDAK DIPAKAI LAGI** — boleh dihapus atau dibiarkan saja
+## 🆕 WAJIB: Kolom "Email" di Tab `Teacher`
 
-## 🆕 WAJIB: Kolom Baru di Tab `Teacher`
-
-- [ ] Tambah kolom **"Email"** (Gmail guru) — dipakai fitur "Ingatkan Report" untuk undang guru ke Google Calendar event. Kalau kosong, Calendar dilewati tapi Telegram tetap terkirim.
-
-## 🆕 Setup Tambahan: Trigger 2x/Hari (mode eskalasi)
-
-Mode eskalasi (>7 hari pending) didesain bisa kirim reminder **2x/hari**, tapi
-perlu **2 Time-driven Trigger** untuk `cronReminderKelipatan8` (misal jam 08:00
-dan 17:00). Kalau cuma 1 trigger/hari, reminder eskalasi jadi 1x/hari juga.
-
-- [ ] (Opsional) Tambah trigger ke-2 untuk `cronReminderKelipatan8` di jam berbeda
+Untuk fitur Calendar invite di tombol "Ingatkan Report".
 
 ## 🔴 Data Sumber (Spreadsheet) — dari sebelumnya
 
 - [ ] Perbaiki typo kurung siku: `3D_ANIMATOR!A25`, `WEBSITE_DESIGNER!A25` (JUNIORS)
 - [ ] Hapus tab `Sheet6` (KIDS) kalau belum
-- [ ] Benahi tab `"ROBLOX CODER "` (TEENS) — spasi ekstra + struktur unik
-- [ ] Isi variasi teks kosong di `ROBLOX_EXPLORER` blok 1 & 2 (KIDS)
+- [ ] Benahi tab `"ROBLOX CODER "` (TEENS)
+- [ ] Isi variasi teks kosong `ROBLOX_EXPLORER` blok 1 & 2 (KIDS)
 
-## 🟡 Konfigurasi Mapping Course
+## 🟡 Belum Terjawab
 
-- [x] `js/course-tab-map.js` — sudah dilengkapi & diperbaiki
-- [ ] `"JavaScript Developer"` (Teens) masih `null` — isi kalau sudah ada tab yang cocok
-
-## 🟢 Setup Infrastruktur (Google Apps Script)
-
-- [ ] Redeploy Apps Script (New version) — `Code.gs` berubah total di update ini
-- [ ] Isi 6 Script Properties (lihat `PANDUAN.md`)
-- [ ] `GAS_URL` di `js/api.js` — URL polos, tanpa `?action=...`
-- [ ] PIN wajib unik antar semua guru (login sekarang PIN-only)
-- [ ] Chat ID Telegram tiap guru + admin
+- [ ] Maksud "copas jadi table" — masih perlu klarifikasi dari Anda
 
 ## 🔵 Testing Sebelum Rilis
 
-- [ ] Tes 2 lesson checkpoint berturut (misal 8 lalu 16) → pastikan KEDUANYA tercatat, bukan yang lama ketimpa
-- [ ] Tes tombol "Ingatkan Report" → cek Telegram masuk + (kalau email guru terisi) cek undangan Calendar masuk
-- [ ] Tes tombol "Report Telah Selesai" → cek kolom Report X yang paling kecil/lama otomatis jadi TRUE
-- [ ] Tes submit Exam Report dari tab Exam Report → cek juga menandai Report X yang benar
-- [ ] Tes kolom Status Lesson terisi "Completed"/"On Going" sesuai status di form
-- [ ] Tes kolom Selesai = TRUE → pastikan siswa itu tidak lagi muncul di reminder/pending manapun
+- [ ] Tes tombol "🤖 Generate dengan AI" — cek hasil teks masuk akal & sesuai objective course
+- [ ] Tes AI gagal (misal matikan sementara API key) → pastikan fallback ke manual jalan otomatis
+- [ ] Tes reminder: checkpoint baru tercapai → JANGAN ada notif hari itu juga → cek muncul setelah 3 hari
+- [ ] Tes 2 checkpoint berturut (8 lalu 16) tidak saling menimpa
+- [ ] Tes tombol "Ingatkan Report" & "Report Telah Selesai"

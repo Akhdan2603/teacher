@@ -102,6 +102,55 @@ function doGet(e) {
       case 'getStudentInfo':
         result = getStudentLatestInfo(e.parameter.kelas, e.parameter.student);
         break;
+      case 'getAIExamText':
+        result = generateAIExamTexts(
+          e.parameter.course,
+          parseInt(e.parameter.lesson, 10),
+          e.parameter.student,
+          JSON.parse(e.parameter.objectives || '[]'),
+          {
+            literacy: e.parameter.gradeLiteracy,
+            application: e.parameter.gradeApplication,
+            character: e.parameter.gradeCharacter,
+          }
+        );
+        break;
+      case 'submitDailyReport':
+        result = submitDailyReport({
+          teacher: e.parameter.teacher,
+          hari: e.parameter.hari,
+          kelas: e.parameter.kelas,
+          student: e.parameter.student,
+          criteria: e.parameter.criteria,
+          course: e.parameter.course,
+          lesson: e.parameter.lesson,
+          status: e.parameter.status,
+          noteText: e.parameter.noteText,
+        });
+        break;
+      case 'submitExamReport':
+        result = submitExamReport({
+          teacher: e.parameter.teacher,
+          kelas: e.parameter.kelas,
+          student: e.parameter.student,
+          criteria: e.parameter.criteria,
+          course: e.parameter.course,
+          noteText: e.parameter.noteText,
+        });
+        break;
+      case 'markReportDone':
+        result = markReportDoneAction({
+          kelas: e.parameter.kelas,
+          student: e.parameter.student,
+        });
+        break;
+      case 'requestReminder':
+        result = requestReminder({
+          teacher: e.parameter.teacher,
+          kelas: e.parameter.kelas,
+          student: e.parameter.student,
+        });
+        break;
       default:
         result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -113,6 +162,9 @@ function doGet(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// doPost dipertahankan sebagai fallback/kompatibilitas (misal kalau nanti ada
+// integrasi lain yang genuinely butuh POST), tapi frontend sekarang SELALU
+// pakai GET (lihat catatan di js/api.js soal kenapa).
 function doPost(e) {
   let result;
   try {
@@ -217,10 +269,10 @@ function submitDailyReport(payload) {
 
   const lessonNum = parseInt(payload.lesson, 10);
   if (CHECKPOINTS.indexOf(lessonNum) !== -1) {
-    const marked = markLessonCheckpoint_(ss, payload.kelas, payload.student, lessonNum);
-    if (marked.justMarked) {
-      notifyTeacherExamDue_(payload.teacher, payload.student, payload.kelas, payload.course, lessonNum);
-    }
+    // Catat kapan checkpoint ini pertama tercapai. TIDAK langsung kirim
+    // notifikasi di sini — reminder pertama baru dikirim 3 hari kemudian
+    // lewat cron (lihat cronReminderKelipatan8), sesuai desain baru.
+    markLessonCheckpoint_(ss, payload.kelas, payload.student, lessonNum);
   }
 
   return { success: true };
@@ -559,7 +611,9 @@ function notifyTeacherExamDue_(teacher, student, kelas, course, checkpoint) {
 }
 
 // ------------------------------------------------------------
-// CRON — Time-driven Trigger, jalankan 1-2x/hari.
+// CRON — Time-driven Trigger, jalankan 1x/hari jam 08:00.
+// Reminder PERTAMA dikirim 3 hari setelah checkpoint tercapai (bukan
+// langsung), lalu diulang tiap 3 hari sekali selama masih pending.
 // ------------------------------------------------------------
 function cronReminderKelipatan8() {
   const config = getConfig_();
@@ -570,6 +624,7 @@ function cronReminderKelipatan8() {
   const colIndex = buildStudentColumnIndex_(header);
   const now = new Date();
   const belumDibuatList = [];
+  const REMINDER_INTERVAL_DAYS = 3;
 
   for (let i = 1; i < rows.length; i++) {
     const kelas = rows[i][1], student = rows[i][2], course = rows[i][3];
@@ -582,24 +637,17 @@ function cronReminderKelipatan8() {
     const lastReminded = reminderCol !== -1 ? rows[i][reminderCol] : null;
 
     const daysPending = lessonDate ? (now - new Date(lessonDate)) / 86400000 : 0;
-    const daysSinceReminder = lastReminded ? (now - new Date(lastReminded)) / 86400000 : Infinity;
-    const escalated = daysPending >= 7;
+    belumDibuatList.push(`- ${student} (${kelas}, ${course}, Lesson ${checkpoint}, ${Math.floor(daysPending)} hari)`);
 
-    belumDibuatList.push(`- ${student} (${kelas}, ${course}, Lesson ${checkpoint})${escalated ? ' ⚠️ SUDAH ' + Math.floor(daysPending) + ' HARI' : ''}`);
-
-    const threshold = escalated ? 0.4 : 1;
-    if (daysSinceReminder >= threshold) {
+    // Reminder pertama: tunggu sampai >= 3 hari sejak checkpoint tercapai.
+    // Reminder berikutnya: tiap >= 3 hari sejak reminder terakhir.
+    const daysSinceReminder = lastReminded ? (now - new Date(lastReminded)) / 86400000 : daysPending;
+    if (daysPending >= REMINDER_INTERVAL_DAYS && daysSinceReminder >= REMINDER_INTERVAL_DAYS) {
       const teacherInfo = findTeacherForClass_(ss, kelas);
       if (teacherInfo && teacherInfo.chatId) {
-        const msg = escalated
-          ? `🚨 <b>URGENT — Sudah ${Math.floor(daysPending)} hari!</b>\n${student} (${kelas}) di ${course} BELUM dibuatkan Exam Report untuk Lesson ${checkpoint}. Mohon segera diselesaikan.`
-          : `⏰ <b>Reminder Exam Report</b>\n${student} (${kelas}) di ${course} masih menunggu Exam Report Lesson ${checkpoint} kamu.`;
-        sendTelegramMessage_(teacherInfo.chatId, msg);
-      }
-      if (escalated && config.adminChatId) {
         sendTelegramMessage_(
-          config.adminChatId,
-          `🚨 <b>Eskalasi (>7 hari)</b>: ${student} (${kelas}, guru: ${teacherInfo ? teacherInfo.name : '?'}) — Lesson ${checkpoint}, ${course}, sudah ${Math.floor(daysPending)} hari belum di-Exam Report.`
+          teacherInfo.chatId,
+          `⏰ <b>Reminder Exam Report</b>\n${student} (${kelas}) di ${course} masih menunggu Exam Report Lesson ${checkpoint} kamu. Sudah ${Math.floor(daysPending)} hari sejak lesson ini tercapai.`
         );
       }
       if (reminderCol !== -1) sheet.getRange(i + 1, reminderCol + 1).setValue(now);

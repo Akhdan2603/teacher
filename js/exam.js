@@ -120,6 +120,59 @@ function onExamCourseChange() {
     : '⚠️ Course ini belum ada mapping ke tab spreadsheet (lihat js/course-tab-map.js). Tombol "Ambil Template dari Sistem" tidak akan bekerja untuk course ini — isi manual saja di kotak teks di bawah.';
 }
 
+// Ambil objective lesson 1..checkpoint dari COURSE_DATA (data.js) untuk
+// dikirim ke AI sebagai satu-satunya sumber fakta (anti-hallucination).
+function buildObjectivesForAI(course, checkpoint) {
+  const lessons = COURSE_DATA[course];
+  if (!lessons) return [];
+  return lessons
+    .filter(l => l.num >= 1 && l.num <= checkpoint)
+    .map(l => ({ lesson: l.num, title: l.title, objectives: l.objectives }));
+}
+
+async function fetchAIExamTemplates() {
+  const criteria = document.getElementById('exam-criteria').value;
+  const course = document.getElementById('exam-course').value;
+  const lesson = document.getElementById('exam-lesson').value;
+  const student = document.getElementById('exam-student').value;
+
+  if (!criteria || !course || !lesson || !student) {
+    toast('Isi dulu Nama Murid, Lesson, Criteria, dan Course.', 'error');
+    return;
+  }
+
+  const objectives = buildObjectivesForAI(course, parseInt(lesson, 10));
+  if (objectives.length === 0) {
+    toast('Tidak ada data objective untuk course ini di data.js — fallback ke sistem manual.', 'error');
+    fetchExamTemplates();
+    return;
+  }
+
+  const grades = {
+    literacy: document.getElementById('exam-grade-literacy').value,
+    application: document.getElementById('exam-grade-application').value,
+    character: document.getElementById('exam-grade-character').value,
+  };
+
+  toast('Meminta AI generate teks (bisa beberapa detik)...', 'success');
+  const res = await apiGetAIExamText(course, lesson, student, grades, objectives);
+
+  if (!res.success) {
+    toast(`AI gagal: ${res.error || 'tidak diketahui'}. Fallback ke sistem manual...`, 'error');
+    fetchExamTemplates(); // fallback otomatis ke VARIASI manual dari spreadsheet
+    return;
+  }
+
+  ['literacy', 'application', 'character'].forEach(cat => {
+    examVariants[cat] = res.texts[cat] || [];
+    examVariantIndex[cat] = 0;
+    document.getElementById(`exam-text-${cat}`).value = examVariants[cat][0] || '';
+  });
+
+  updateExamPreview();
+  toast('Teks berhasil digenerate AI ✔ — tetap cek & edit sebelum kirim.', 'success');
+}
+
 async function fetchExamTemplates() {
   const criteria = document.getElementById('exam-criteria').value;
   const course = document.getElementById('exam-course').value;
