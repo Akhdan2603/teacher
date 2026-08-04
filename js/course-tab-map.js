@@ -27,6 +27,7 @@ const COURSE_TAB_MAP = {
   },
   Kids: {
     "Coding Explorer": "XPLORER",                        // TODO: mungkin "XPLORER"? mohon konfirmasi
+    "Tech Explorer": null,                                // TODO: course baru, belum ada tab exam template
     "Game Developer": "GAMEDEV",                         // TODO: mungkin "GAMEDEV"? mohon konfirmasi
     "Code and Design with Roblox": "ROBLOX_EXPLORER",             // TODO: salah satu dari ROBLOX_DESIGNER/ROBLOX_CODER/dst?
     "Interactive Mechanics on Roblox": "ROBLOX_DESIGNER",         // TODO

@@ -57,6 +57,9 @@ function apiMarkReportDone(payload) {
 function apiRequestReminder(payload) {
   return apiPost('requestReminder', payload);
 }
+function apiMarkAbsent(payload) {
+  return apiPost('markAbsent', payload);
+}
 
 // ---- Exam Template ----
 function apiGetExamTemplate(criteria, course, lesson, student, grades) {

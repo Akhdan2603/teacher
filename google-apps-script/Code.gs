@@ -60,6 +60,9 @@ const TABS = {
   JADWAL: 'Jadwal',
   STUDENT: 'Student',
   LOG: 'Log_Laporan',
+  ADMIN_BELUM: 'Belum Buat Report',
+  ADMIN_SUDAH: 'Sudah Buat Report',
+  ABSENSI: 'Streak Tidak Hadir',
 };
 
 // Checkpoint kelipatan-8 yang di-track. Course terpanjang = 48 lesson.
@@ -140,6 +143,13 @@ function doGet(e) {
         break;
       case 'markReportDone':
         result = markReportDoneAction({
+          kelas: e.parameter.kelas,
+          student: e.parameter.student,
+        });
+        break;
+      case 'markAbsent':
+        result = markAbsentAction({
+          teacher: e.parameter.teacher,
           kelas: e.parameter.kelas,
           student: e.parameter.student,
         });
@@ -267,6 +277,9 @@ function submitDailyReport(payload) {
   updateStudentRow_(ss, payload.hari, payload.kelas, payload.student, payload.course, payload.lesson, payload.criteria, payload.status);
   updateLogRow_(ss, payload, 'Daily', payload.noteText || '');
 
+  // Submit Daily Report normal = siswa hadir hari ini → reset streak tidak hadir.
+  clearAbsentStreak_(ss, payload.kelas, payload.student);
+
   const lessonNum = parseInt(payload.lesson, 10);
   if (CHECKPOINTS.indexOf(lessonNum) !== -1) {
     // Catat kapan checkpoint ini pertama tercapai. TIDAK langsung kirim
@@ -274,6 +287,8 @@ function submitDailyReport(payload) {
     // lewat cron (lihat cronReminderKelipatan8), sesuai desain baru.
     markLessonCheckpoint_(ss, payload.kelas, payload.student, lessonNum);
   }
+
+  syncAdminReportSheets_(ss);
 
   return { success: true };
 }
@@ -573,6 +588,7 @@ function markReportDone_(ss, kelas, student) {
         throw new Error(`Kolom "Report ${checkpoint}" tidak ditemukan di tab Student.`);
       }
       sheet.getRange(i + 1, reportCol + 1).setValue(true);
+      syncAdminReportSheets_(ss);
       return { checkpoint };
     }
   }

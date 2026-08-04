@@ -700,6 +700,7 @@ function renderAutoInputs(){
       <div class="checkpoint-actions">
         <button type="button" class="btn-checkpoint btn-remind" onclick="handleRequestReminder(${i})">⏰ Ingatkan Report</button>
         <button type="button" class="btn-checkpoint btn-done" onclick="handleMarkReportDone(${i})">✅ Report Telah Selesai</button>
+        <button type="button" class="btn-checkpoint btn-absent" onclick="handleMarkAbsent(${i})">🚫 Tidak Hadir</button>
       </div>`;
     c.appendChild(div);
     
@@ -743,6 +744,23 @@ async function handleMarkReportDone(idx) {
     toast(`Report Lesson ${res.checkpoint} ditandai selesai ✔`, 'success');
   } else {
     toast(res.error || 'Gagal menandai selesai (mungkin tidak ada checkpoint pending).', 'error');
+  }
+}
+
+async function handleMarkAbsent(idx) {
+  const s = autoStudents[idx];
+  const teacher = typeof getCurrentTeacher === 'function' ? getCurrentTeacher() : null;
+  const kelas = document.getElementById('auto-kelas').value;
+
+  if (!teacher) { toast('Sesi login tidak ditemukan, silakan login ulang.', 'error'); return; }
+  if (!kelas || !s.nama) { toast('Isi dulu Kelas dan Nama Murid.', 'error'); return; }
+
+  const res = await apiMarkAbsent({ teacher, kelas, student: s.nama });
+
+  if (res.success) {
+    toast(`${s.nama} ditandai tidak hadir ✔`, 'success');
+  } else {
+    toast(res.error || 'Gagal menandai tidak hadir.', 'error');
   }
 }
 

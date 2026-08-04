@@ -588,3 +588,7 @@ body:not(.auth-ok) .topnav, body:not(.auth-ok) .tab-bar, body:not(.auth-ok) .app
   background: var(--g50); color: var(--g700); border-color: var(--g200);
 }
 .btn-checkpoint.btn-done:hover { background: var(--g100); }
+.btn-checkpoint.btn-absent {
+  background: #fef2f2; color: #b91c1c; border-color: #fecaca;
+}
+.btn-checkpoint.btn-absent:hover { background: #fee2e2; }

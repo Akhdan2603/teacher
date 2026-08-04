@@ -1,60 +1,70 @@
 # TODO — Timedoor Report Generator
 
-## 🆕 WAJIB: Setup Gemini AI (fitur "Generate dengan AI" di Exam Report)
+## 🆕 Fitur Admin Sheets & Absensi (Update Terbaru)
 
-- [ ] Buka [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → buat API key (gratis, tanpa kartu kredit)
-- [ ] Tambah Script Property baru: `GEMINI_API_KEY` = key tadi
-- [ ] Redeploy Apps Script (New version)
-- [ ] Kalau API key belum diisi / gagal / limit habis → otomatis fallback ke sistem VARIASI manual, TIDAK error fatal
+**Tidak perlu setup manual** — 3 tab baru ini **auto-dibuat sendiri** oleh sistem
+begitu pertama kali dibutuhkan:
+- `Belum Buat Report` — view baca-saja, auto-sync tiap ada perubahan
+- `Sudah Buat Report` — view baca-saja, auto-sync tiap ada perubahan
+- `Streak Tidak Hadir` — bertambah kolom `Absen 1, Absen 2, ...` otomatis ke kanan tiap siswa absen lagi, ke-reset (kosong lagi) begitu siswa itu submit Daily Report lagi
 
-## 🆕 PERUBAHAN: Reminder Timing (Bug Perbaikan + Desain Baru)
+⚠️ **Jangan edit 2 sheet "Belum/Sudah Buat Report" secara manual** — datanya akan
+ditimpa lagi otomatis tiap ada submit baru (sumber kebenaran tetap di tab `Student`).
 
-Desain reminder diubah total:
-- **Sebelum**: notifikasi langsung begitu checkpoint (lesson 8/16/dst) terdeteksi, lalu reminder harian, eskalasi 2x/hari setelah 7 hari
-- **Sekarang**: TIDAK ada notifikasi langsung. Reminder PERTAMA dikirim **3 hari setelah** checkpoint tercapai, lalu diulang **tiap 3 hari sekali** selama masih pending. Semua reminder terjadwal lewat 1 cron **jam 8 pagi**.
+- [ ] Redeploy Apps Script (New version) — ada file baru `AdminSheets.gs`
+- [ ] Tes: submit Daily Report checkpoint baru → cek muncul di `Belum Buat Report`
+- [ ] Tes: submit Exam Report / klik "Report Telah Selesai" → cek pindah ke `Sudah Buat Report`
+- [ ] Tes: klik "🚫 Tidak Hadir" 2x untuk siswa yang sama → cek `Absen 1` dan `Absen 2` keduanya terisi
+- [ ] Tes: submit Daily Report normal untuk siswa yang tadi ditandai absen → cek kolom Absen di `Streak Tidak Hadir` jadi kosong lagi
 
-- [ ] **Redeploy Apps Script** — `cronReminderKelipatan8` sudah ditulis ulang total
-- [ ] Kalau sebelumnya Anda sempat pasang **2 trigger** (untuk mode eskalasi 2x/hari versi lama), **hapus salah satunya** — sekarang cukup **1 trigger, jam 08:00 pagi saja**
-- [ ] Tombol manual "⏰ Ingatkan Report" TETAP kirim reminder instan kapan saja (tidak terikat jadwal 3 hari ini — itu untuk kasus guru mau reminder di luar jadwal otomatis)
+## 🆕 WAJIB: Setup Gemini AI
 
-## 🔴 Bug "Unknown action: undefined" — Redeploy Checklist
+- [ ] `GEMINI_API_KEY` di Script Properties (aistudio.google.com/apikey, gratis)
+- [ ] Redeploy Apps Script
 
-Kalau masih muncul setelah update kemarin, cek urutan ini:
-1. [ ] `js/api.js` — pastikan `apiPost` sudah versi GET-based (cek ada komentar "PENTING: fungsi ini bernama apiPost...")
-2. [ ] `Code.gs` — pastikan action mutasi (`submitDailyReport`, dst) ada di `doGet`, bukan cuma di `doPost`
-3. [ ] Deploy → Manage deployments → ✏️ → Version: **New version** → Deploy (BUKAN cuma Save)
-4. [ ] Hard refresh browser (Ctrl+Shift+R)
-5. [ ] Kalau MASIH error persis sama setelah 4 langkah ini beneran dilakukan, kasih tahu saya — berarti ada penyebab lain yang perlu digali lebih dalam
+## 🆕 Reminder Timing (Sudah Diubah)
 
-## 🆕 WAJIB (dari update sebelumnya): Skema Kolom Tab `Student`
+Reminder pertama 3 hari setelah checkpoint, lalu tiap 3 hari, jam 8 pagi (1 trigger cukup).
+- [ ] Kalau sebelumnya sempat pasang 2 trigger untuk mode eskalasi versi lama, hapus salah satunya
 
-| Kolom | Isi |
-|---|---|
-| Status Lesson | auto: "Completed"/"On Going" |
-| Selesai | manual TRUE/FALSE — course tuntas total |
-| Lesson 8/16/24/32/40/48 | timestamp otomatis saat checkpoint tercapai |
-| Report 8/16/24/32/40/48 | TRUE/FALSE — exam report checkpoint itu sudah dibuat |
-| Last Reminder 8/16/24/32/40/48 | timestamp reminder terakhir per checkpoint |
+## 🔴 Bug "Unknown action: undefined" — Sudah Diperbaiki (GET-based)
 
-## 🆕 WAJIB: Kolom "Email" di Tab `Teacher`
+Kalau masih muncul, cek:
+1. [ ] `js/api.js` sudah versi GET-based
+2. [ ] `Code.gs` action mutasi ada di `doGet`
+3. [ ] Sudah redeploy (New version, bukan cuma Save)
+4. [ ] Hard refresh browser
+
+## 🆕 Skema Kolom Tab `Student` (dari update sebelumnya)
+
+Status Lesson, Selesai, Lesson 8/16/24/32/40/48, Report 8/16/24/32/40/48,
+Last Reminder 8/16/24/32/40/48 — semua sudah dijelaskan di update sebelumnya.
+
+## 🆕 Kolom "Email" di Tab `Teacher`
 
 Untuk fitur Calendar invite di tombol "Ingatkan Report".
 
-## 🔴 Data Sumber (Spreadsheet) — dari sebelumnya
+## 🆕 Course Baru "Tech Explorer"
+
+- [ ] Belum ada mapping di `course-tab-map.js` (masih `null`) — isi kalau sudah ada tab exam template-nya
+
+## 🔴 Data Sumber (Spreadsheet)
 
 - [ ] Perbaiki typo kurung siku: `3D_ANIMATOR!A25`, `WEBSITE_DESIGNER!A25` (JUNIORS)
 - [ ] Hapus tab `Sheet6` (KIDS) kalau belum
 - [ ] Benahi tab `"ROBLOX CODER "` (TEENS)
 - [ ] Isi variasi teks kosong `ROBLOX_EXPLORER` blok 1 & 2 (KIDS)
 
-## 🟡 Belum Terjawab
+## 🟡 Catatan Penting
 
-- [ ] Maksud "copas jadi table" — masih perlu klarifikasi dari Anda
+- File `data.js`/`templates.js` yang Anda upload sempat mengandung 11 baris bahasa
+  Inggris yang sudah pernah diperbaiki sebelumnya tapi hilang lagi (kemungkinan
+  ter-generate ulang dari sumber master yang belum diupdate). Sudah diperbaiki lagi.
+  **Kalau update file ini lagi di masa depan, kasih tahu saya supaya saya audit ulang.**
 
 ## 🔵 Testing Sebelum Rilis
 
-- [ ] Tes tombol "🤖 Generate dengan AI" — cek hasil teks masuk akal & sesuai objective course
-- [ ] Tes AI gagal (misal matikan sementara API key) → pastikan fallback ke manual jalan otomatis
-- [ ] Tes reminder: checkpoint baru tercapai → JANGAN ada notif hari itu juga → cek muncul setelah 3 hari
-- [ ] Tes 2 checkpoint berturut (8 lalu 16) tidak saling menimpa
-- [ ] Tes tombol "Ingatkan Report" & "Report Telah Selesai"
+- [ ] Tes tombol "🤖 Generate dengan AI"
+- [ ] Tes reminder 3 hari + streak absensi
+- [ ] Tes 2 checkpoint berturut tidak saling menimpa
+- [ ] Tes semua 3 tombol baru (Ingatkan Report, Report Telah Selesai, Tidak Hadir)
