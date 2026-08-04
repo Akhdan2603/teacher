@@ -41,7 +41,6 @@ const COURSE_TAB_MAP = {
     "AI Machine Learning": "PYTHON_FOR_ML(16)",
     "AI Computer Vision": "PYTHON_FOR_CV(16)",        // TODO: mungkin "PYTHON_FOR_CV(16)"? mohon konfirmasi            // TODO: mungkin "PYTHON AI (32Meeting)"? mohon konfirmasi
     "JavaScript Developer": null,      // TODO: belum jelas cocok ke tab yang mana
-    "Python Coder": "PYTHON_CODER",
     "Android Developer": "APP_DEV",         // TODO: mungkin "APP_DEV"? mohon konfirmasi
   },
 };

@@ -120,14 +120,26 @@ function onExamCourseChange() {
     : '⚠️ Course ini belum ada mapping ke tab spreadsheet (lihat js/course-tab-map.js). Tombol "Ambil Template dari Sistem" tidak akan bekerja untuk course ini — isi manual saja di kotak teks di bawah.';
 }
 
-// Ambil objective lesson 1..checkpoint dari COURSE_DATA (data.js) untuk
-// dikirim ke AI sebagai satu-satunya sumber fakta (anti-hallucination).
+// Ambil materi lesson 1..checkpoint dari data.js (COURSE_DATA) DAN
+// templates.js (TEMPLATES) — dua-duanya file lokal, TIDAK ada
+// ketergantungan spreadsheet sama sekali di jalur AI ini. TEMPLATES
+// dikirim juga supaya AI punya kalimat yang sudah rapi sebagai bahan
+// rangkai-ulang, bukan cuma poin-poin objective yang mentah.
 function buildObjectivesForAI(course, checkpoint) {
   const lessons = COURSE_DATA[course];
   if (!lessons) return [];
+  const templatesForCourse = (typeof TEMPLATES !== 'undefined' && TEMPLATES[course]) || {};
+
   return lessons
     .filter(l => l.num >= 1 && l.num <= checkpoint)
-    .map(l => ({ lesson: l.num, title: l.title, objectives: l.objectives }));
+    .map(l => ({
+      lesson: l.num,
+      title: l.title,
+      objectives: l.objectives,
+      // {nama} dilepas jadi generik "siswa" di sini — nama asli murid
+      // ditempel ulang oleh AI di backend, bukan dari string ini.
+      templateText: (templatesForCourse[String(l.num)] || '').replace(/\{nama\}/g, 'siswa'),
+    }));
 }
 
 async function fetchAIExamTemplates() {
@@ -136,15 +148,17 @@ async function fetchAIExamTemplates() {
   const lesson = document.getElementById('exam-lesson').value;
   const student = document.getElementById('exam-student').value;
 
-  if (!criteria || !course || !lesson || !student) {
-    toast('Isi dulu Nama Murid, Lesson, Criteria, dan Course.', 'error');
+  // Catatan: Criteria sengaja TIDAK dipakai untuk fetch (cuma dipakai UI
+  // dropdown course di atasnya) — jalur AI ini murni data.js + templates.js,
+  // tidak pernah menyentuh course-tab-map.js atau spreadsheet exam sama sekali.
+  if (!course || !lesson || !student) {
+    toast('Isi dulu Nama Murid, Lesson, dan Course.', 'error');
     return;
   }
 
   const objectives = buildObjectivesForAI(course, parseInt(lesson, 10));
   if (objectives.length === 0) {
-    toast('Tidak ada data objective untuk course ini di data.js — fallback ke sistem manual.', 'error');
-    fetchExamTemplates();
+    toast(`Tidak ada data lesson untuk course "${course}" di data.js — cek COURSE_DATA, atau pakai tombol "Ambil Template dari Sistem" sebagai alternatif.`, 'error');
     return;
   }
 
@@ -158,9 +172,8 @@ async function fetchAIExamTemplates() {
   const res = await apiGetAIExamText(course, lesson, student, grades, objectives);
 
   if (!res.success) {
-    toast(`AI gagal: ${res.error || 'tidak diketahui'}. Fallback ke sistem manual...`, 'error');
-    fetchExamTemplates(); // fallback otomatis ke VARIASI manual dari spreadsheet
-    return;
+    toast(`AI gagal: ${res.error || 'tidak diketahui'}. Coba lagi, atau pakai tombol "Ambil Template dari Sistem" sebagai alternatif manual.`, 'error');
+    return; // TIDAK auto-fallback ke spreadsheet — biar guru yang putuskan sendiri
   }
 
   ['literacy', 'application', 'character'].forEach(cat => {

@@ -2,12 +2,18 @@
  * ============================================================
  * AI EXAM TEXT GENERATOR (Google Gemini — Google AI Studio, free tier)
  * ============================================================
- * Menghasilkan teks Exam Report yang lebih variatif dengan cara
- * merangkai ULANG daftar objective yang sudah pasti benar (dikirim
- * dari frontend, diambil dari COURSE_DATA di js/data.js) — BUKAN
- * membiarkan AI mengarang bebas. Kalau API gagal/quota habis/key
- * belum diisi, caller (exam.js) otomatis fallback ke sistem VARIASI
- * manual dari spreadsheet (getExamTemplateText di ExamTemplates.gs).
+ * PENTING: file ini SAMA SEKALI TIDAK mengakses SpreadsheetApp —
+ * tidak ada ketergantungan spreadsheet sedikit pun. Materi lesson
+ * (objective + contoh narasi) dikirim dari FRONTEND, diambil murni
+ * dari js/data.js (COURSE_DATA) dan js/templates.js (TEMPLATES) —
+ * dua file lokal di repo, bukan dari Google Sheets. AI merangkai
+ * ulang materi itu jadi ringkasan Exam Report yang lebih variatif,
+ * BUKAN mengarang bebas.
+ *
+ * Kalau API gagal/quota habis/key belum diisi, caller (exam.js)
+ * TIDAK auto-fallback ke sistem spreadsheet — cukup tampilkan error,
+ * guru bisa pilih pakai tombol "Ambil Template dari Sistem" sendiri
+ * kalau mau (itu jalur terpisah yang memang spreadsheet-based).
  *
  * SETUP: tambahkan Script Property GEMINI_API_KEY (dari
  * aistudio.google.com/apikey — gratis, tidak perlu kartu kredit).
@@ -37,9 +43,12 @@ function generateAIExamTexts(courseName, checkpoint, studentName, objectives, gr
     return { success: false, error: 'Daftar objective kosong — tidak ada bahan untuk AI.' };
   }
 
-  const objectiveListText = objectives.map(l =>
-    `Lesson ${l.lesson}${l.title ? ' - ' + l.title : ''}: ${(l.objectives || []).join('; ')}`
-  ).join('\n');
+  const objectiveListText = objectives.map(l => {
+    const objText = (l.objectives || []).join('; ');
+    const lines = [`Lesson ${l.lesson}${l.title ? ' - ' + l.title : ''}: ${objText}`];
+    if (l.templateText) lines.push(`  (Contoh narasi lesson ini: "${l.templateText}")`);
+    return lines.join('\n');
+  }).join('\n');
 
   const qualityWord = { A: 'sangat baik', B: 'baik', C: 'cukup baik' };
   const gradeLiteracy = qualityWord[grades.literacy] || 'baik';
@@ -48,15 +57,15 @@ function generateAIExamTexts(courseName, checkpoint, studentName, objectives, gr
 
   const prompt = `Anda adalah asisten guru coding yang menulis laporan ujian (Exam Report) untuk orang tua murid bernama "${studentName}" di course "${courseName}".
 
-DAFTAR MATERI YANG SUDAH DIPELAJARI (Lesson 1 sampai ${checkpoint}) — INI SATU-SATUNYA SUMBER FAKTA YANG BOLEH ANDA PAKAI:
+DAFTAR MATERI YANG SUDAH DIPELAJARI (Lesson 1 sampai ${checkpoint}) — INI SATU-SATUNYA SUMBER FAKTA YANG BOLEH ANDA PAKAI. Setiap lesson disertai contoh narasi yang sudah pernah ditulis guru untuk laporan harian — pakai ini sebagai BAHAN dan GAYA BAHASA acuan, tapi rangkai ULANG jadi ringkasan gabungan lesson 1-${checkpoint} (bukan sekadar menyalin atau menempel satu-satu):
 ${objectiveListText}
 
 ATURAN KETAT (WAJIB DIPATUHI):
 1. HANYA boleh merujuk topik/skill yang PERSIS ada di daftar di atas. DILARANG KERAS menyebutkan tools, bahasa pemrograman, atau project yang TIDAK ada di daftar.
 2. Tulis dalam Bahasa Indonesia, nada hangat dan positif untuk orang tua (gaya: "Halo Parents 😊 ...").
 3. JANGAN sebutkan angka lesson secara eksplisit (misal jangan tulis "Lesson 3"), cukup deskripsikan materinya secara naratif.
-4. Buat kalimat yang RINGKAS (2-4 kalimat per kategori), variatif strukturnya (jangan template kaku berulang).
-5. Ganti-ganti pilihan kata tiap kali diminta (untuk keperluan variasi, jangan selalu pakai kalimat yang sama persis).
+4. Buat kalimat yang RINGKAS (2-4 kalimat per kategori), gabungkan beberapa lesson jadi satu narasi mengalir — jangan daftar per-lesson berurutan seperti list.
+5. Ganti-ganti pilihan kata & struktur kalimat tiap kali diminta (untuk keperluan variasi, jangan selalu pakai kalimat yang sama persis dengan contoh narasi di atas).
 
 Buat 3 bagian penilaian:
 - "literacy": tentang pemahaman konsep coding (level pencapaian: ${gradeLiteracy})
