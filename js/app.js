@@ -104,7 +104,54 @@ let students = [
   {nama:"Aysha",progress:"Aysha learned about creating AR games on Delightex with animal themes (*Lesson 14*). Also studied drone logic on Tynker.\n\nNote: Aysha completed all tasks very well and is starting to understand loop concepts."},
   {nama:"Puan",progress:"Puan is currently working on *Lesson 14* (Introduction to Variables). Puan understood the main concepts well and will continue in our next class."}
 ];
-const photoData = {photo1:null,photo2:null};
+let photoData = [];      // Manual tab: array of dataURL string (unlimited)
+let autoPhotoData = [];  // Auto tab: array of dataURL string (unlimited)
+
+function handlePhotoAdd(e, isAuto) {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  const arr = isAuto ? autoPhotoData : photoData;
+  let remaining = files.length;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      arr.push(ev.target.result);
+      remaining--;
+      if (remaining === 0) {
+        renderPhotoGrid(isAuto);
+        e.target.value = '';
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function removePhotoAt(isAuto, index) {
+  const arr = isAuto ? autoPhotoData : photoData;
+  arr.splice(index, 1);
+  renderPhotoGrid(isAuto);
+  toast('Photo removed', 'success');
+}
+
+function renderPhotoGrid(isAuto) {
+  const arr = isAuto ? autoPhotoData : photoData;
+  const gridIds = isAuto ? ['auto-photo-grid-input', 'auto-photo-grid'] : ['photo-grid-input', 'photo-grid'];
+  const section = document.getElementById(isAuto ? 'auto-photo-section' : 'photo-section');
+
+  const thumbHtml = arr.map((src, i) => `
+    <div class="photo-thumb-wrap">
+      <img src="${src}" alt="Photo ${i + 1}">
+      <button type="button" class="btn-photo-overlay-del" data-html2canvas-ignore="true" onclick="removePhotoAt(${isAuto}, ${i})" title="Remove Photo">✕</button>
+    </div>`).join('');
+
+  gridIds.forEach(id => {
+    const grid = document.getElementById(id);
+    if (grid) grid.innerHTML = thumbHtml;
+  });
+
+  if (section) section.style.display = arr.length === 0 ? 'none' : '';
+  fitPreviewScale();
+}
 
 function buildWAMessage(){
   const tgl = document.getElementById('input-tanggal').value;
@@ -194,74 +241,6 @@ function removeStudent(i){
   students.splice(i,1);
   renderInputs();
 }
-function handlePhoto(e,key){
-  const file = e.target.files[0]; if(!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {photoData[key]=ev.target.result;renderPhoto(key,ev.target.result);};
-  reader.readAsDataURL(file);
-}
-function updatePhotoLayout(prefix){
-  const wrap1 = document.getElementById(prefix+'1-wrap');
-  const wrap2 = document.getElementById(prefix+'2-wrap');
-  const section = document.getElementById(prefix === 'aphoto' ? 'auto-photo-section' : 'photo-section');
-  if(!wrap1 || !wrap2 || !section) return;
-
-  const has1 = wrap1.classList.contains('has-photo');
-  const has2 = wrap2.classList.contains('has-photo');
-  const count = (has1?1:0) + (has2?1:0);
-
-  // 0 foto: sembunyikan section foto total (misal dipakai Exam Report)
-  section.style.display = count === 0 ? 'none' : '';
-
-  // 1 foto: sembunyikan slot yang kosong — sisanya (flex:1) otomatis melebar
-  // penuh karena jadi satu-satunya flex item di barisnya. 2 foto: normal side-by-side.
-  wrap1.style.display = (count === 1 && !has1) ? 'none' : '';
-  wrap2.style.display = (count === 1 && !has2) ? 'none' : '';
-
-  fitPreviewScale();
-}
-function renderPhoto(key,src){
-  const wrap = document.getElementById(key+'-wrap');
-  if(!wrap) return;
-  const isAuto = key.startsWith('a');
-  const removeFn = isAuto ? `removeAutoPhoto('${key}')` : `removePhoto('${key}')`;
-  wrap.innerHTML = `<img src="${src}" alt="Photo"><button type="button" class="btn-photo-overlay-del" data-html2canvas-ignore="true" onclick="${removeFn}" title="Remove Photo">✕</button>`;
-  wrap.classList.add('has-photo');
-  const btnDel = document.getElementById('btndel-' + key);
-  if(btnDel) btnDel.style.display = 'flex';
-  updatePhotoLayout(isAuto ? 'aphoto' : 'photo');
-  fitPreviewScale();
-}
-function removePhoto(key){
-  photoData[key] = null;
-  const input = document.getElementById('input-' + key);
-  if(input) input.value = '';
-  const btnDel = document.getElementById('btndel-' + key);
-  if(btnDel) btnDel.style.display = 'none';
-  resetPhotoPreview(key);
-  toast('Photo removed','success');
-}
-function removeAutoPhoto(key){
-  autoPhotoData[key] = null;
-  const input = document.getElementById('input-' + key);
-  if(input) input.value = '';
-  const btnDel = document.getElementById('btndel-' + key);
-  if(btnDel) btnDel.style.display = 'none';
-  resetPhotoPreview(key);
-  toast('Photo removed','success');
-}
-function resetPhotoPreview(key){
-  const wrap = document.getElementById(key+'-wrap');
-  if(!wrap) return;
-  const isAuto = key.startsWith('a');
-  const num = key.endsWith('1')?'1':'2';
-  const labelText = isAuto ? (LANG_UI[autoLang]['photo'+num]) : `Photo ${num}`;
-  wrap.innerHTML = `<div class="photo-empty-label"><span class="icon">▢</span><span>${labelText}</span></div>`;
-  wrap.classList.remove('has-photo');
-  updatePhotoLayout(isAuto ? 'aphoto' : 'photo');
-  fitPreviewScale();
-}
-
 // Canvas capture helper
 async function capturePNG(elementId) {
   const el = document.getElementById(elementId);
@@ -340,7 +319,7 @@ async function downloadPDF(){
     const tanggal=formatDate(document.getElementById('input-tanggal').value);
     await buildAndSavePDF({
       kelas, tanggal,
-      photoStore: photoData,
+      photos: photoData,
       students,
       labels: {
         title: 'Student Progress Report',
@@ -361,7 +340,6 @@ async function downloadPDF(){
 // ============================================================
 let autoStudents = [];
 let autoLang = 'en'; // Default English
-const autoPhotoData = {aphoto1:null,aphoto2:null};
 
 const LANG_UI = {
   id: {
@@ -474,10 +452,6 @@ function setLang(lang){
   if(autoLabelKelas) autoLabelKelas.textContent = L.labelKelas;
   const autoLabelTanggal = document.getElementById('auto-label-tanggal');
   if(autoLabelTanggal) autoLabelTanggal.textContent = L.labelTanggal;
-  const autoPhoto1Label = document.getElementById('auto-photo1-label');
-  if(autoPhoto1Label) autoPhoto1Label.textContent = L.photo1;
-  const autoPhoto2Label = document.getElementById('auto-photo2-label');
-  if(autoPhoto2Label) autoPhoto2Label.textContent = L.photo2;
   
   const photoSecTitle = document.getElementById('auto-photo-sec-title');
   if(photoSecTitle) photoSecTitle.textContent = lang === 'id' ? 'Foto Dokumentasi Kegiatan' : 'Classroom Activity Snapshots';
@@ -717,12 +691,13 @@ async function handleRequestReminder(idx) {
   const s = autoStudents[idx];
   const teacher = typeof getCurrentTeacher === 'function' ? getCurrentTeacher() : null;
   const kelas = document.getElementById('auto-kelas').value;
+  const namaLengkap = s.namaLengkap || s.nama;
 
   if (!teacher) { toast('Sesi login tidak ditemukan, silakan login ulang.', 'error'); return; }
-  if (!kelas || !s.nama) { toast('Isi dulu Kelas dan Nama Murid.', 'error'); return; }
+  if (!kelas || !namaLengkap) { toast('Isi dulu Kelas dan Nama Murid.', 'error'); return; }
 
   toast('Mengirim reminder...', 'success');
-  const res = await apiRequestReminder({ teacher, kelas, student: s.nama });
+  const res = await apiRequestReminder({ teacher, kelas, namaLengkap });
 
   if (res.success) {
     const calNote = res.calendarCreated ? ' + undangan Google Calendar' : ' (Calendar dilewati: email guru belum terdaftar)';
@@ -735,10 +710,11 @@ async function handleRequestReminder(idx) {
 async function handleMarkReportDone(idx) {
   const s = autoStudents[idx];
   const kelas = document.getElementById('auto-kelas').value;
+  const namaLengkap = s.namaLengkap || s.nama;
 
-  if (!kelas || !s.nama) { toast('Isi dulu Kelas dan Nama Murid.', 'error'); return; }
+  if (!kelas || !namaLengkap) { toast('Isi dulu Kelas dan Nama Murid.', 'error'); return; }
 
-  const res = await apiMarkReportDone({ kelas, student: s.nama });
+  const res = await apiMarkReportDone({ kelas, namaLengkap });
 
   if (res.success) {
     toast(`Report Lesson ${res.checkpoint} ditandai selesai ✔`, 'success');
@@ -751,11 +727,12 @@ async function handleMarkAbsent(idx) {
   const s = autoStudents[idx];
   const teacher = typeof getCurrentTeacher === 'function' ? getCurrentTeacher() : null;
   const kelas = document.getElementById('auto-kelas').value;
+  const namaLengkap = s.namaLengkap || s.nama;
 
   if (!teacher) { toast('Sesi login tidak ditemukan, silakan login ulang.', 'error'); return; }
-  if (!kelas || !s.nama) { toast('Isi dulu Kelas dan Nama Murid.', 'error'); return; }
+  if (!kelas || !namaLengkap) { toast('Isi dulu Kelas dan Nama Murid.', 'error'); return; }
 
-  const res = await apiMarkAbsent({ teacher, kelas, student: s.nama });
+  const res = await apiMarkAbsent({ teacher, kelas, namaLengkap, namaPanggilan: s.nama });
 
   if (res.success) {
     toast(`${s.nama} ditandai tidak hadir ✔`, 'success');
@@ -812,7 +789,8 @@ function onJadwalKelasChange() {
 
   const students = _jadwalData.kelas[kelasName] || [];
   autoStudents = students.map(st => ({
-    nama: st.nama || '',
+    namaLengkap: st.namaLengkap || '',
+    nama: st.namaPanggilan || st.namaLengkap || '', // "nama" = nama panggilan, dipakai di teks laporan
     progress: '',
     criteria: '',
     course: st.course || '',
@@ -844,8 +822,9 @@ async function submitDailyReportToSheet(idx) {
   const teacher = typeof getCurrentTeacher === 'function' ? getCurrentTeacher() : null;
   const hari = document.getElementById('jadwal-hari-select').value;
   const kelas = document.getElementById('auto-kelas').value;
+  const namaLengkap = s.namaLengkap || s.nama; // fallback: manual entry tanpa "Muat Jadwal"
 
-  if (!teacher || !hari || !kelas || !s.nama || !s.course || !s.lesson) {
+  if (!teacher || !hari || !kelas || !namaLengkap || !s.course || !s.lesson) {
     // Data belum lengkap (misal guru isi manual tanpa "Muat Jadwal") —
     // tidak apa-apa, biarkan silent karena ini fitur tambahan, bukan wajib
     // untuk tetap bisa export PDF/PNG/WA seperti biasa.
@@ -854,7 +833,8 @@ async function submitDailyReportToSheet(idx) {
 
   const res = await apiSubmitDaily({
     teacher, hari, kelas,
-    student: s.nama,
+    namaLengkap,
+    namaPanggilan: s.nama,
     criteria: s.criteria,
     course: s.course,
     lesson: s.lesson,
@@ -942,15 +922,19 @@ function autoUpdateWA(){
   document.getElementById('auto-wa-bubble').textContent = buildAutoWAMessage();
 }
 
-function handleAutoPhoto(e,key){
-  const file = e.target.files[0]; if(!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => { autoPhotoData[key]=ev.target.result; renderPhoto(key, ev.target.result); };
-  reader.readAsDataURL(file);
+// Shared PDF builder — used by both manual and auto tab
+// Baca dimensi asli sebuah dataURL gambar (dipakai buildAndSavePDF supaya
+// foto di-fit proporsional, bukan di-stretch, saat ditempel ke PDF).
+function getImageDims_(src) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth || 4, h: img.naturalHeight || 3 });
+    img.onerror = () => resolve({ w: 4, h: 3 });
+    img.src = src;
+  });
 }
 
-// Shared PDF builder — used by both manual and auto tab
-async function buildAndSavePDF({kelas, tanggal, photoStore, students, labels}) {
+async function buildAndSavePDF({kelas, tanggal, photos, students, labels}) {
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
   const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
@@ -966,31 +950,37 @@ async function buildAndSavePDF({kelas, tanggal, photoStore, students, labels}) {
   doc.text(labels.labelTanggal + tanggal,W-22,30,{align:'right'});
   
   const MARGIN=14,GAP=8;
-  const photoKeys = Object.keys(photoStore);
-  const photoSrcs = photoKeys.map(k => photoStore[k]).filter(src => !!src); // hanya yang benar-benar terisi
+  const photoSrcs = (photos || []).filter(src => !!src);
   const photoCount = photoSrcs.length;
 
   let PHOTO_Y=44, photoBlockHeight=0;
 
-  if (photoCount === 0) {
-    // Tidak ada foto sama sekali (misal Exam Report) — bagian foto disembunyikan
-    // total, tabel langsung mulai di posisi header, tidak ada kotak kosong.
-    photoBlockHeight = 0;
-  } else if (photoCount === 1) {
-    // 1 foto — tampil besar mengisi lebar penuh (bukan 1 kotak kecil + 1 kotak kosong)
-    const PHOTO_W = W - MARGIN*2, PHOTO_H = Math.round(PHOTO_W*(9/22));
-    const src = photoSrcs[0];
-    const fmt = src.startsWith('data:image/png') ? 'PNG' : 'JPEG';
-    doc.addImage(src, fmt, MARGIN, PHOTO_Y, PHOTO_W, PHOTO_H);
-    photoBlockHeight = PHOTO_H;
-  } else {
-    // 2 foto — side-by-side seperti sebelumnya
-    const PHOTO_W=(W-MARGIN*2-GAP)/2, PHOTO_H=Math.round(PHOTO_W*(9/16));
-    for(let i=1;i<=2;i++){
-      const px=MARGIN+(i-1)*(PHOTO_W+GAP);
-      doc.addImage(photoSrcs[i-1], photoSrcs[i-1].startsWith('data:image/png')?'PNG':'JPEG', px, PHOTO_Y, PHOTO_W, PHOTO_H);
+  if (photoCount > 0) {
+    // Grid dinamis: 1 foto = 1 kolom lebar panorama, 2-4 foto = 2 kolom,
+    // >4 foto = 3 kolom. Tiap foto di-fit (bukan di-stretch) di dalam sel-nya
+    // — rasio aslinya dijaga, sisa ruang di sel jadi "letterbox" kosong,
+    // supaya foto tidak pernah gepeng/melar.
+    const cols = photoCount === 1 ? 1 : (photoCount <= 4 ? 2 : 3);
+    const rowsCount = Math.ceil(photoCount / cols);
+    const cellW = (W - MARGIN * 2 - GAP * (cols - 1)) / cols;
+    const cellH = cols === 1 ? Math.round(cellW * (9 / 22)) : 42;
+
+    for (let idx = 0; idx < photoCount; idx++) {
+      const row = Math.floor(idx / cols), col = idx % cols;
+      const cellX = MARGIN + col * (cellW + GAP);
+      const cellY = PHOTO_Y + row * (cellH + GAP);
+      const src = photoSrcs[idx];
+
+      doc.setFillColor(248, 250, 252); doc.rect(cellX, cellY, cellW, cellH, 'F'); // background letterbox
+
+      const dims = await getImageDims_(src);
+      const scale = Math.min(cellW / dims.w, cellH / dims.h);
+      const drawW = dims.w * scale, drawH = dims.h * scale;
+      const offX = cellX + (cellW - drawW) / 2, offY = cellY + (cellH - drawH) / 2;
+      const fmt = src.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(src, fmt, offX, offY, drawW, drawH);
     }
-    photoBlockHeight = PHOTO_H;
+    photoBlockHeight = rowsCount * cellH + (rowsCount - 1) * GAP;
   }
 
   const TABLE_X=MARGIN,TABLE_W=W-MARGIN*2,COL_NAME_W=44,COL_LESSON_W=32;
@@ -1097,7 +1087,7 @@ async function downloadAutoPDF(){
     const tanggal=formatDate(document.getElementById('auto-tanggal').value);
     await buildAndSavePDF({
       kelas, tanggal,
-      photoStore: autoPhotoData,
+      photos: autoPhotoData,
       students: autoStudents,
       labels: {
         title: L.pdfTitle,
@@ -1128,7 +1118,8 @@ renderInputs();
 updatePreview();
 
 // Init auto tab with sample student in English
-autoStudents = [{nama:'Eymar',progress:'',criteria:'Kids',course:'Code and Design with Roblox',lesson:'14',status:'done',lang:'en'}];
+// (tidak ada lagi seed data dummy — sekarang Daily Auto Report jadi landing
+// page, guru langsung "Muat Jadwal" atau tambah murid manual dari kosong)
 setLang('en');
 autoUpdatePreview();
 setTimeout(fitPreviewScale, 100);

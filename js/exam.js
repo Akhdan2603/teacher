@@ -42,7 +42,7 @@ async function loadPendingExams() {
 
   select.innerHTML = '<option value="">-- Pilih Siswa --</option>' +
     examPendingList.map((p, i) =>
-      `<option value="${i}">${escHtml(p.student)} (${escHtml(p.kelas)}, ${escHtml(p.course)}, Lesson ${p.lesson})</option>`
+      `<option value="${i}">${escHtml(p.namaPanggilan || p.namaLengkap)} (${escHtml(p.kelas)}, ${escHtml(p.course)}, Lesson ${p.lesson})</option>`
     ).join('');
 }
 
@@ -51,21 +51,29 @@ function onPendingExamSelect() {
   if (idx === '') return;
   const p = examPendingList[idx];
 
-  document.getElementById('exam-student').value = p.student;
+  document.getElementById('exam-student').value = p.namaPanggilan || p.namaLengkap;
+  document.getElementById('exam-nama-lengkap').value = p.namaLengkap;
   document.getElementById('exam-kelas').value = p.kelas;
   document.getElementById('exam-lesson').value = p.lesson;
 
-  autoFillCriteriaAndCourse(p.kelas, p.student);
+  autoFillCriteriaAndCourse(p.kelas, p.namaLengkap);
+}
+
+// Ambil Nama Lengkap (kunci pencocokan) — fallback ke field nama biasa
+// kalau diisi manual tanpa pilih dari daftar pending.
+function getExamNamaLengkap() {
+  const hidden = document.getElementById('exam-nama-lengkap').value;
+  return hidden || document.getElementById('exam-student').value;
 }
 
 // Tarik Criteria & Course otomatis dari data Daily Report TERAKHIR untuk
 // siswa ini (tersimpan di tab Student). Tetap bisa di-override manual
 // oleh guru setelahnya — ini cuma pre-fill, bukan field terkunci.
-async function autoFillCriteriaAndCourse(kelas, student) {
-  if (!kelas || !student) return;
+async function autoFillCriteriaAndCourse(kelas, namaLengkap) {
+  if (!kelas || !namaLengkap) return;
 
   toast('Mengambil Criteria & Course dari data terakhir...', 'success');
-  const res = await apiGetStudentInfo(kelas, student);
+  const res = await apiGetStudentInfo(kelas, namaLengkap);
 
   if (!res.success) {
     toast(`${res.error || 'Gagal mengambil data siswa.'} Silakan pilih Criteria & Course manual.`, 'error');
@@ -146,12 +154,9 @@ async function fetchAIExamTemplates() {
   const criteria = document.getElementById('exam-criteria').value;
   const course = document.getElementById('exam-course').value;
   const lesson = document.getElementById('exam-lesson').value;
-  const student = document.getElementById('exam-student').value;
+  const namaPanggilan = document.getElementById('exam-student').value;
 
-  // Catatan: Criteria sengaja TIDAK dipakai untuk fetch (cuma dipakai UI
-  // dropdown course di atasnya) — jalur AI ini murni data.js + templates.js,
-  // tidak pernah menyentuh course-tab-map.js atau spreadsheet exam sama sekali.
-  if (!course || !lesson || !student) {
+  if (!course || !lesson || !namaPanggilan) {
     toast('Isi dulu Nama Murid, Lesson, dan Course.', 'error');
     return;
   }
@@ -169,7 +174,7 @@ async function fetchAIExamTemplates() {
   };
 
   toast('Meminta AI generate teks (bisa beberapa detik)...', 'success');
-  const res = await apiGetAIExamText(course, lesson, student, grades, objectives);
+  const res = await apiGetAIExamText(course, lesson, namaPanggilan, grades, objectives);
 
   if (!res.success) {
     toast(`AI gagal: ${res.error || 'tidak diketahui'}. Coba lagi, atau pakai tombol "Ambil Template dari Sistem" sebagai alternatif manual.`, 'error');
@@ -190,9 +195,9 @@ async function fetchExamTemplates() {
   const criteria = document.getElementById('exam-criteria').value;
   const course = document.getElementById('exam-course').value;
   const lesson = document.getElementById('exam-lesson').value;
-  const student = document.getElementById('exam-student').value;
+  const namaPanggilan = document.getElementById('exam-student').value;
 
-  if (!criteria || !course || !lesson || !student) {
+  if (!criteria || !course || !lesson || !namaPanggilan) {
     toast('Isi dulu Nama Murid, Lesson, Criteria, dan Course.', 'error');
     return;
   }
@@ -210,7 +215,7 @@ async function fetchExamTemplates() {
   };
 
   toast('Mengambil template dari sistem...', 'success');
-  const res = await apiGetExamTemplate(criteria, tabName, lesson, student, grades);
+  const res = await apiGetExamTemplate(criteria, tabName, lesson, namaPanggilan, grades);
 
   if (!res.success) {
     toast(res.error || 'Gagal mengambil template.', 'error');
@@ -306,7 +311,7 @@ async function downloadExamPDF() {
     // tanpa foto sama sekali kalau nanti diperlukan).
     await buildAndSavePDF({
       kelas, tanggal,
-      photoStore: {},
+      photos: [],
       students: [{ nama: student, progress: combinedText }],
       labels: {
         title: 'Exam Report',
@@ -330,11 +335,12 @@ async function downloadExamPDF() {
 async function submitExamToSheet() {
   const teacher = typeof getCurrentTeacher === 'function' ? getCurrentTeacher() : null;
   const kelas = document.getElementById('exam-kelas').value;
-  const student = document.getElementById('exam-student').value;
+  const namaPanggilan = document.getElementById('exam-student').value;
+  const namaLengkap = getExamNamaLengkap();
   const course = document.getElementById('exam-course').value;
 
   if (!teacher) { toast('Sesi login tidak ditemukan, silakan login ulang.', 'error'); return; }
-  if (!kelas || !student || !course) {
+  if (!kelas || !namaLengkap || !course) {
     toast('Lengkapi dulu Kelas, Nama Murid, dan Course sebelum menyimpan.', 'error');
     return;
   }
@@ -347,7 +353,7 @@ async function submitExamToSheet() {
   const btn = document.getElementById('ebtn-save');
   btn.disabled = true; btn.textContent = 'Menyimpan...';
 
-  const res = await apiSubmitExam({ teacher, kelas, student, course, noteText: combinedText });
+  const res = await apiSubmitExam({ teacher, kelas, namaLengkap, namaPanggilan, course, noteText: combinedText });
 
   btn.disabled = false; btn.textContent = '💾 Simpan ke Sistem';
 

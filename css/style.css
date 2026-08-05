@@ -592,3 +592,90 @@ body:not(.auth-ok) .topnav, body:not(.auth-ok) .tab-bar, body:not(.auth-ok) .app
   background: #fef2f2; color: #b91c1c; border-color: #fecaca;
 }
 .btn-checkpoint.btn-absent:hover { background: #fee2e2; }
+
+/* ============================================================
+   KELOLA MURID
+   ============================================================ */
+.murid-add-row {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+}
+.murid-add-row select, .murid-add-row input {
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 13px; flex: 1; min-width: 140px;
+}
+.murid-empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+.murid-kelas-block { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.murid-kelas-block:first-of-type { margin-top: 8px; border-top: none; padding-top: 0; }
+.murid-kelas-title { font-weight: 700; font-size: 14px; color: var(--g700); margin-bottom: 10px; }
+.murid-count { font-weight: 400; color: var(--muted); font-size: 12px; }
+.murid-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.murid-chip {
+  display: flex; align-items: center; gap: 8px; background: var(--g50);
+  border: 1px solid var(--g200); border-radius: 10px; padding: 8px 10px;
+}
+.murid-chip-info { display: flex; flex-direction: column; line-height: 1.3; }
+.murid-chip-panggilan { font-weight: 700; font-size: 13px; color: var(--slate2); }
+.murid-chip-lengkap { font-size: 10.5px; color: var(--muted); }
+.murid-chip-del {
+  background: none; border: none; color: #dc2626; cursor: pointer;
+  font-size: 14px; padding: 2px 4px; border-radius: 4px;
+}
+.murid-chip-del:hover { background: #fee2e2; }
+
+/* Tombol dashed "+ Tambah Murid" — pola sama seperti "+ Add Photo" */
+.murid-add-dashed {
+  margin-top: 10px; width: 100%; padding: 12px; border-radius: 12px;
+  border: 2px dashed var(--g300); background: linear-gradient(135deg, var(--g50), #ffffff);
+  color: var(--g700); font-weight: 700; font-size: 13px; cursor: pointer;
+  transition: all .2s;
+}
+.murid-add-dashed:hover { border-color: var(--g500); background: var(--g100); }
+
+.murid-inline-form {
+  margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  padding: 12px; background: var(--g50); border-radius: 10px; border: 1px solid var(--g200);
+}
+.murid-inline-form input {
+  flex: 1; min-width: 120px; padding: 9px 10px; border: 1px solid var(--border);
+  border-radius: 8px; font-size: 13px;
+}
+.btn-cancel-inline {
+  background: #fee2e2; color: #b91c1c; border: none; border-radius: 8px;
+  padding: 9px 12px; cursor: pointer; font-weight: 700;
+}
+
+/* ============================================================
+   DYNAMIC PHOTO GRID — unlimited foto, tidak stretch (object-fit: contain)
+   ============================================================ */
+.rpt-photos-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px; margin-bottom: 10px;
+}
+.rpt-photos-grid:empty { display: none; margin-bottom: 0; }
+.photo-thumb-wrap {
+  position: relative; aspect-ratio: 4 / 3; border-radius: 12px; overflow: hidden;
+  background: #f1f5f9; border: 1.5px solid #bbf7d0;
+  box-shadow: 0 4px 14px rgba(34, 197, 94, 0.1);
+}
+.photo-thumb-wrap img {
+  width: 100%; height: 100%;
+  object-fit: contain; /* PENTING: jangan pakai 'cover' — itu yang bikin foto crop/stretch */
+  background: #f8fafc;
+  display: block;
+}
+.btn-photo-overlay-del {
+  position: absolute; top: 6px; right: 6px; width: 22px; height: 22px;
+  border-radius: 50%; border: none; background: rgba(15, 23, 42, 0.65); color: #fff;
+  font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.btn-photo-overlay-del:hover { background: rgba(220, 38, 38, 0.9); }
+
+/* Tombol "+ Add Photo" — dashed border, sesuai contoh desain */
+.photo-add-dashed {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; padding: 16px; border-radius: 14px;
+  border: 2px dashed #86efac; background: linear-gradient(135deg, #f0fdf4, #ffffff);
+  color: var(--g700); font-weight: 700; font-size: 14px; cursor: pointer;
+  transition: all .2s;
+}
+.photo-add-dashed:hover { border-color: var(--g500); background: var(--g100); }

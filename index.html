@@ -24,16 +24,17 @@
 
   <div style="max-width:1500px;margin:0 auto;">
     <div class="tab-bar">
-      <button class="tab-btn active" onclick="switchTab('manual')">✏️ Manual Report</button>
-      <button class="tab-btn" onclick="switchTab('auto')">⚡ Daily Auto Report</button>
+      <button class="tab-btn active" onclick="switchTab('auto')">⚡ Daily Auto Report</button>
+      <button class="tab-btn" onclick="switchTab('manual')">✏️ Manual Report</button>
       <button class="tab-btn" onclick="switchTab('exam')">🎓 Exam Report</button>
+      <button class="tab-btn" onclick="switchTab('murid')">👥 Kelola Murid</button>
     </div>
   </div>
 
   <div class="app-layout">
 
     <!-- TAB: MANUAL -->
-    <div id="tab-manual" class="tab-content active">
+    <div id="tab-manual" class="tab-content">
       <aside class="sidebar">
         <div class="card">
           <div class="card-title">Class Information</div>
@@ -46,24 +47,11 @@
         </div>
         <div class="card">
           <div class="card-title">Documentation Photos</div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Photo 1</label>
-              <div class="photo-input-group">
-                <input type="file" id="input-photo1" accept="image/*" onchange="handlePhoto(event,'photo1')">
-                <button type="button" class="btn-del-photo" id="btndel-photo1" onclick="removePhoto('photo1')"
-                  title="Remove Photo" style="display:none;">✕</button>
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Photo 2</label>
-              <div class="photo-input-group">
-                <input type="file" id="input-photo2" accept="image/*" onchange="handlePhoto(event,'photo2')">
-                <button type="button" class="btn-del-photo" id="btndel-photo2" onclick="removePhoto('photo2')"
-                  title="Remove Photo" style="display:none;">✕</button>
-              </div>
-            </div>
-          </div>
+          <div class="rpt-photos-grid" id="photo-grid-input"></div>
+          <label class="photo-add-dashed">
+            + Add Photo
+            <input type="file" accept="image/*" multiple style="display:none" onchange="handlePhotoAdd(event, false)">
+          </label>
         </div>
         <div class="card">
           <div class="card-title">Student Data & Progress</div>
@@ -126,14 +114,7 @@
               <div class="rpt-section-header">
                 <span>📸</span><span>Classroom Activity Snapshots</span>
               </div>
-              <div class="rpt-photos" id="photo-photos-row">
-                <div class="rpt-photo-wrap" id="photo1-wrap">
-                  <div class="photo-empty-label"><span class="icon">▢</span><span>Photo 1</span></div>
-                </div>
-                <div class="rpt-photo-wrap" id="photo2-wrap">
-                  <div class="photo-empty-label"><span class="icon">▢</span><span>Photo 2</span></div>
-                </div>
-              </div>
+              <div class="rpt-photos-grid" id="photo-grid"></div>
             </div>
 
             <!-- Student Progress Stream -->
@@ -158,7 +139,7 @@
     </div>
 
     <!-- TAB: AUTO RAPOR -->
-    <div id="tab-auto" class="tab-content">
+    <div id="tab-auto" class="tab-content active">
       <aside class="sidebar">
         <div class="card">
           <div class="card-title">📅 Muat Jadwal dari Sistem</div>
@@ -197,24 +178,11 @@
 
         <div class="card">
           <div class="card-title">Documentation Photos</div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Photo 1</label>
-              <div class="photo-input-group">
-                <input type="file" id="input-aphoto1" accept="image/*" onchange="handleAutoPhoto(event,'aphoto1')">
-                <button type="button" class="btn-del-photo" id="btndel-aphoto1" onclick="removeAutoPhoto('aphoto1')"
-                  title="Remove Photo" style="display:none;">✕</button>
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Photo 2</label>
-              <div class="photo-input-group">
-                <input type="file" id="input-aphoto2" accept="image/*" onchange="handleAutoPhoto(event,'aphoto2')">
-                <button type="button" class="btn-del-photo" id="btndel-aphoto2" onclick="removeAutoPhoto('aphoto2')"
-                  title="Remove Photo" style="display:none;">✕</button>
-              </div>
-            </div>
-          </div>
+          <div class="rpt-photos-grid" id="auto-photo-grid-input"></div>
+          <label class="photo-add-dashed">
+            + Add Photo
+            <input type="file" accept="image/*" multiple style="display:none" onchange="handlePhotoAdd(event, true)">
+          </label>
         </div>
 
         <div class="card">
@@ -280,16 +248,7 @@
               <div class="rpt-section-header">
                 <span>📸</span><span id="auto-photo-sec-title">Classroom Activity Snapshots</span>
               </div>
-              <div class="rpt-photos" id="auto-photo-photos-row">
-                <div class="rpt-photo-wrap" id="aphoto1-wrap">
-                  <div class="photo-empty-label"><span class="icon">▢</span><span id="auto-photo1-label">Photo 1</span>
-                  </div>
-                </div>
-                <div class="rpt-photo-wrap" id="aphoto2-wrap">
-                  <div class="photo-empty-label"><span class="icon">▢</span><span id="auto-photo2-label">Photo 2</span>
-                  </div>
-                </div>
-              </div>
+              <div class="rpt-photos-grid" id="auto-photo-grid"></div>
             </div>
 
             <!-- Student Progress Stream -->
@@ -329,7 +288,9 @@
         <div class="card">
           <div class="card-title">Data Siswa</div>
           <label>Nama Murid</label>
-          <input type="text" id="exam-student" placeholder="Nama murid">
+          <input type="text" id="exam-student" placeholder="Nama murid (nama panggilan)">
+          <input type="hidden" id="exam-nama-lengkap" value="">
+          <div style="font-size:11px;color:var(--muted);margin-top:-6px;margin-bottom:6px;">Nama lengkap dipakai di belakang layar untuk pencocokan data — terisi otomatis kalau pilih dari daftar pending.</div>
           <label>Kelas</label>
           <input type="text" id="exam-kelas" placeholder="Nama kelas">
           <button type="button" class="btn-load-jadwal" onclick="autoFillCriteriaAndCourse(document.getElementById('exam-kelas').value, document.getElementById('exam-student').value)">🔍 Tarik Criteria & Course Terakhir</button>
@@ -418,6 +379,36 @@
         </div>
       </section>
     </div>
+
+    <!-- ============================================================ -->
+    <!-- TAB: KELOLA MURID                                             -->
+    <!-- ============================================================ -->
+    <div id="tab-murid" class="tab-content">
+      <section class="main-panel" style="width:100%;">
+        <div class="card">
+          <div class="card-title">➕ Tambah Kelas / Murid Baru</div>
+          <div class="murid-add-row">
+            <select id="murid-new-hari">
+              <option value="">-- Pilih Hari --</option>
+              <option value="Senin">Senin</option>
+              <option value="Selasa">Selasa</option>
+              <option value="Rabu">Rabu</option>
+              <option value="Kamis">Kamis</option>
+              <option value="Jumat">Jumat</option>
+              <option value="Sabtu">Sabtu</option>
+              <option value="Minggu">Minggu</option>
+            </select>
+            <input type="text" id="murid-new-kelas" placeholder="Nama Kelas (misal T14B)">
+            <input type="text" id="murid-new-lengkap" placeholder="Nama Lengkap">
+            <input type="text" id="murid-new-panggilan" placeholder="Nama Panggilan">
+            <button type="button" class="btn-dl" onclick="submitAddStudent(null)">➕ Tambah</button>
+          </div>
+        </div>
+
+        <div id="murid-loading" class="card" style="text-align:center;color:var(--muted);">Memuat data kelas...</div>
+        <div id="murid-container"></div>
+      </section>
+    </div>
   </div>
 
   <footer class="app-footer">
@@ -439,6 +430,8 @@
   <script src="js/app.js"></script>
   <!-- Exam Report tab logic -->
   <script src="js/exam.js"></script>
+  <!-- Kelola Murid tab logic -->
+  <script src="js/kelola-murid.js"></script>
 
 </body>
 
