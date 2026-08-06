@@ -648,7 +648,12 @@ body:not(.auth-ok) .topnav, body:not(.auth-ok) .tab-bar, body:not(.auth-ok) .app
    DYNAMIC PHOTO GRID — unlimited foto, tidak stretch (object-fit: contain)
    ============================================================ */
 .rpt-photos-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  /* PENTING: auto-fit (bukan auto-fill) — auto-fill tetap mereservasi
+     kolom kosong walau cuma ada 1 foto (jadinya kelihatan kecil di pojok),
+     auto-fit collapse kolom kosong itu sehingga foto tunggal melebar
+     penuh mengisi baris. object-fit:contain di bawah tetap menjaga foto
+     tidak stretch/gepeng. */
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px; margin-bottom: 10px;
 }
 .rpt-photos-grid:empty { display: none; margin-bottom: 0; }

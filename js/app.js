@@ -735,7 +735,13 @@ async function handleMarkAbsent(idx) {
   const res = await apiMarkAbsent({ teacher, kelas, namaLengkap, namaPanggilan: s.nama });
 
   if (res.success) {
-    toast(`${s.nama} ditandai tidak hadir ✔`, 'success');
+    toast(`${s.nama} ditandai tidak hadir — dihapus dari daftar laporan hari ini ✔`, 'success');
+    // Hapus dari daftar aktif supaya tidak ikut muncul di tabel, teks WA,
+    // maupun PDF/PNG — laporan hari ini hanya untuk murid yang hadir.
+    autoStudents.splice(idx, 1);
+    renderAutoInputs();
+    autoUpdateTable();
+    autoUpdatePreview();
   } else {
     toast(res.error || 'Gagal menandai tidak hadir.', 'error');
   }

@@ -7,7 +7,7 @@
  * PERUBAHAN STRUKTUR BESAR (Kelola Murid update):
  * - Tab `Jadwal` TUNGGAL sudah TIDAK DIPAKAI LAGI. Diganti 7 tab
  *   terpisah per hari: "Senin","Selasa","Rabu","Kamis","Jumat",
- *   "Sabtu","Minggu" — masing-masing kolom: Teacher, Kelas,
+ *   "Sabtu" — masing-masing kolom: Teacher, Kelas,
  *   Nama Lengkap, Nama Panggilan.
  * - Tab `Student` sekarang WAJIB kolom (nama header persis):
  *   Hari, Kelas, Teacher, Nama Lengkap, Nama Panggilan, Criteria,
@@ -45,7 +45,7 @@ const TABS = {
   ABSENSI: 'Streak Tidak Hadir',
 };
 
-const HARI_LIST = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+const HARI_LIST = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const CHECKPOINTS = [8, 16, 24, 32, 40, 48];
 
 // Header lengkap tab Student, dipakai saat auto-create baris/kolom baru.

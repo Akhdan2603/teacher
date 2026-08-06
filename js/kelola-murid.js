@@ -41,7 +41,7 @@ async function loadKelolaMurid() {
 
 function renderKelolaMurid() {
   const container = document.getElementById('murid-container');
-  const hariList = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+  const hariList = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
   let html = '';
   hariList.forEach(hari => {
