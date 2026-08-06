@@ -39,6 +39,7 @@ const TABS = {
   STUDENT: 'Student',
   LOG: 'Log_Laporan',
   DROP: 'Drop',
+  PINDAH: 'Pindah',
   ADMIN_BELUM: 'Belum Buat Report',
   ADMIN_SUDAH: 'Sudah Buat Report',
   ABSENSI: 'Streak Tidak Hadir',
@@ -122,7 +123,10 @@ function doGet(e) {
         });
         break;
       case 'removeStudent':
-        result = removeStudentAction({ hari: p.hari, kelas: p.kelas, namaLengkap: p.namaLengkap });
+        result = removeStudentAction({ hari: p.hari, kelas: p.kelas, namaLengkap: p.namaLengkap, mode: p.mode });
+        break;
+      case 'removeClass':
+        result = removeClassAction({ hari: p.hari, kelas: p.kelas });
         break;
       default:
         result = { success: false, error: 'Unknown action: ' + p.action };
@@ -240,6 +244,11 @@ function findStudentRowIndex_(rows, colIndex, kelas, namaLengkap) {
 // JADWAL (7 sheet per hari) & DAILY REPORT
 // ------------------------------------------------------------
 function getJadwalForTeacher(teacher, hari) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = `jadwal_${teacher}_${hari}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
   const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
   const jadwalSheet = ss.getSheetByName(hari);
   if (!jadwalSheet) return { success: true, kelas: {} };
@@ -274,37 +283,56 @@ function getJadwalForTeacher(teacher, hari) {
       lesson: extra.lesson || '',
     });
   }
-  return { success: true, kelas: classMap };
+  const response = { success: true, kelas: classMap };
+  cache.put(cacheKey, JSON.stringify(response), 30); // 30 detik — cukup pendek supaya tidak kelamaan basi
+  return response;
 }
 
 function submitDailyReport(payload) {
   validatePayload_(payload, ['teacher', 'hari', 'kelas', 'namaLengkap', 'course', 'lesson']);
   const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
 
-  updateStudentRow_(ss, payload);
+  // OPTIMASI: baca tab Student SEKALI di sini, dipakai ulang oleh semua
+  // sub-fungsi di bawah (sebelumnya tiap fungsi baca sendiri² -> tab
+  // Student yang sekarang 28 kolom kebaca 3x dalam 1 request, lambat).
+  const studentSheet = ss.getSheetByName(TABS.STUDENT);
+  const studentData = { sheet: studentSheet, rows: studentSheet.getDataRange().getValues() };
+  studentData.colIndex = buildStudentColumnIndex_(studentData.rows[0]);
+
+  updateStudentRow_(ss, payload, studentData);
   updateLogRow_(ss, payload, 'Daily', payload.noteText || '');
   clearAbsentStreak_(ss, payload.kelas, payload.namaLengkap);
 
   const lessonNum = parseInt(payload.lesson, 10);
   if (CHECKPOINTS.indexOf(lessonNum) !== -1) {
-    markLessonCheckpoint_(ss, payload.kelas, payload.namaLengkap, lessonNum);
+    markLessonCheckpoint_(ss, payload.kelas, payload.namaLengkap, lessonNum, studentData);
   }
-  syncAdminReportSheets_(ss);
+
+  syncAdminReportSheets_(ss, studentData);
+  invalidateJadwalCache_(payload.teacher, payload.hari);
   return { success: true };
 }
 
-function updateStudentRow_(ss, payload) {
-  const sheet = ss.getSheetByName(TABS.STUDENT);
-  const rows = sheet.getDataRange().getValues();
-  const colIndex = buildStudentColumnIndex_(rows[0]);
+function updateStudentRow_(ss, payload, preloaded) {
+  const data = preloaded || readStudentSheet_(ss);
+  const { sheet, rows, colIndex } = data;
   const i = findStudentRowIndex_(rows, colIndex, payload.kelas, payload.namaLengkap);
   if (i === -1) throw new Error(`Siswa "${payload.namaLengkap}" (${payload.kelas}) tidak ditemukan di tab Student.`);
 
   const rowNum = i + 1;
-  if (colIndex.course !== -1) sheet.getRange(rowNum, colIndex.course + 1).setValue(payload.course);
-  if (colIndex.lessonSekarang !== -1) sheet.getRange(rowNum, colIndex.lessonSekarang + 1).setValue(payload.lesson);
-  if (colIndex.criteria !== -1 && payload.criteria) sheet.getRange(rowNum, colIndex.criteria + 1).setValue(payload.criteria);
-  if (colIndex.statusLesson !== -1 && payload.status) sheet.getRange(rowNum, colIndex.statusLesson + 1).setValue(mapStatusLabel_(payload.status));
+  if (colIndex.course !== -1) { sheet.getRange(rowNum, colIndex.course + 1).setValue(payload.course); rows[i][colIndex.course] = payload.course; }
+  if (colIndex.lessonSekarang !== -1) { sheet.getRange(rowNum, colIndex.lessonSekarang + 1).setValue(payload.lesson); rows[i][colIndex.lessonSekarang] = payload.lesson; }
+  if (colIndex.criteria !== -1 && payload.criteria) { sheet.getRange(rowNum, colIndex.criteria + 1).setValue(payload.criteria); rows[i][colIndex.criteria] = payload.criteria; }
+  if (colIndex.statusLesson !== -1 && payload.status) { const lbl = mapStatusLabel_(payload.status); sheet.getRange(rowNum, colIndex.statusLesson + 1).setValue(lbl); rows[i][colIndex.statusLesson] = lbl; }
+}
+
+// Helper: baca tab Student 1x, return {sheet, rows, colIndex} — dipakai
+// fungsi manapun yang belum dapat data ter-preload dari caller-nya.
+function readStudentSheet_(ss) {
+  const sheet = ss.getSheetByName(TABS.STUDENT);
+  const rows = sheet.getDataRange().getValues();
+  const colIndex = buildStudentColumnIndex_(rows[0]);
+  return { sheet, rows, colIndex };
 }
 
 function mapStatusLabel_(status) {
@@ -445,10 +473,9 @@ function computePendingCheckpoint_(row, colIndex) {
   return null;
 }
 
-function markLessonCheckpoint_(ss, kelas, namaLengkap, lessonNum) {
-  const sheet = ss.getSheetByName(TABS.STUDENT);
-  const rows = sheet.getDataRange().getValues();
-  const colIndex = buildStudentColumnIndex_(rows[0]);
+function markLessonCheckpoint_(ss, kelas, namaLengkap, lessonNum, preloaded) {
+  const data = preloaded || readStudentSheet_(ss);
+  const { sheet, rows, colIndex } = data;
   const i = findStudentRowIndex_(rows, colIndex, kelas, namaLengkap);
   if (i === -1) return { justMarked: false, reason: 'siswa tidak ditemukan' };
   if (colIndex.selesai !== -1 && isTrue_(rows[i][colIndex.selesai])) return { justMarked: false, reason: 'course sudah Selesai' };
@@ -457,7 +484,9 @@ function markLessonCheckpoint_(ss, kelas, namaLengkap, lessonNum) {
   if (lessonCol === -1) return { justMarked: false, reason: `kolom Lesson ${lessonNum} tidak ada` };
   if (rows[i][lessonCol]) return { justMarked: false, reason: 'sudah pernah ditandai' };
 
-  sheet.getRange(i + 1, lessonCol + 1).setValue(new Date());
+  const now = new Date();
+  sheet.getRange(i + 1, lessonCol + 1).setValue(now);
+  rows[i][lessonCol] = now; // jaga array in-memory tetap sinkron buat caller berikutnya (syncAdminReportSheets_)
   return { justMarked: true, checkpoint: lessonNum };
 }
 

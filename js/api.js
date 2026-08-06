@@ -82,3 +82,6 @@ function apiAddStudent(payload) {
 function apiRemoveStudent(payload) {
   return apiPost('removeStudent', payload);
 }
+function apiRemoveClass(payload) {
+  return apiPost('removeClass', payload);
+}

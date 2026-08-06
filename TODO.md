@@ -1,5 +1,29 @@
 # TODO — Timedoor Report Generator
 
+## 🆕 Fitur Baru: Hapus Kelas & Mode Pindah/Drop + Optimasi Performa
+
+- **Hapus Kelas** (tombol 🗑️ di judul tiap kelas, Kelola Murid) — hapus 1 kelas
+  beserta semua muridnya sekaligus, cocok kalau kelas pindah tangan ke guru
+  lain. Semua muridnya otomatis diarsipkan ke tab **`Pindah`** (auto-dibuat,
+  tidak perlu setup manual).
+- **Hapus Murid** sekarang 2 mode (2 tombol per murid):
+  - 🗑️ **Drop** — arsip permanen ke tab `Drop`, tidak otomatis balik
+  - ↪️ **Pindah Kelas** — arsip ke tab `Pindah`. Kalau nanti ADA GURU MANAPUN
+    nambah murid baru dengan **Nama Lengkap PERSIS SAMA**, sistem otomatis
+    memulihkan seluruh riwayatnya (course, lesson, semua checkpoint) ke kelas
+    baru itu — bukan mulai dari nol lagi.
+- **Optimasi performa**: `getClassesForTeacher` (Kelola Murid, baca 7 sheet
+  sekaligus) di-cache 60 detik; `getJadwalForTeacher` di-cache 30 detik.
+  Cache otomatis dibuang begitu ada perubahan data (add/hapus murid/kelas,
+  submit report) — jadi tetap selalu fresh, cuma klik berulang/buka-tutup
+  tab jadi jauh lebih cepat. `submitDailyReport` juga dirapikan supaya baca
+  tab Student cuma 1x per request (sebelumnya sampai 3x).
+
+- [ ] Redeploy Apps Script (New version) — banyak perubahan di `Code.gs` & `AdminSheets.gs`
+- [ ] Tes: hapus 1 murid mode "Pindah" → tambah murid baru nama PERSIS sama di kelas lain → cek riwayatnya (course/lesson/checkpoint) ikut balik
+- [ ] Tes: hapus 1 kelas utuh → cek semua muridnya masuk tab `Pindah`
+- [ ] Rasakan lagi loading Kelola Murid — harusnya jauh lebih cepat terutama di klik ke-2 dst (efek cache)
+
 ## 🚨 MIGRASI BESAR — WAJIB DILAKUKAN MANUAL DI SPREADSHEET
 
 Update kali ini mengubah struktur data secara mendasar. Backend TIDAK bisa

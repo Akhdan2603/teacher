@@ -57,7 +57,10 @@ function renderKelolaMurid() {
       kelasNames.forEach(kelas => {
         const students = classMap[kelas];
         html += `<div class="murid-kelas-block">
-          <div class="murid-kelas-title">${escHtml(kelas)} <span class="murid-count">(${students.length} murid)</span></div>
+          <div class="murid-kelas-title-row">
+            <div class="murid-kelas-title">${escHtml(kelas)} <span class="murid-count">(${students.length} murid)</span></div>
+            <button type="button" class="murid-del-kelas" onclick="handleRemoveClass('${escHtml(hari)}','${escHtml(kelas)}')" title="Hapus kelas ini (misal pindah tangan ke guru lain)">🗑️ Hapus Kelas</button>
+          </div>
           <div class="murid-list">`;
         students.forEach(s => {
           html += `<div class="murid-chip">
@@ -65,7 +68,8 @@ function renderKelolaMurid() {
               <span class="murid-chip-panggilan">${escHtml(s.namaPanggilan || s.namaLengkap)}</span>
               <span class="murid-chip-lengkap">${escHtml(s.namaLengkap)}</span>
             </div>
-            <button type="button" class="murid-chip-del" onclick="handleRemoveStudent('${escHtml(hari)}','${escHtml(kelas)}','${escHtml(s.namaLengkap)}')" title="Hapus">✕</button>
+            <button type="button" class="murid-chip-action drop" onclick="handleRemoveStudent('${escHtml(hari)}','${escHtml(kelas)}','${escHtml(s.namaLengkap)}','drop')" title="Drop (arsip permanen)">🗑️</button>
+            <button type="button" class="murid-chip-action pindah" onclick="handleRemoveStudent('${escHtml(hari)}','${escHtml(kelas)}','${escHtml(s.namaLengkap)}','pindah')" title="Pindah Kelas (riwayat otomatis balik kalau ditambah lagi di kelas manapun)">↪️</button>
           </div>`;
         });
         html += `</div>
@@ -135,7 +139,10 @@ async function submitAddStudent(btnEl) {
   const res = await apiAddStudent({ teacher, hari, kelas, namaLengkap, namaPanggilan });
 
   if (res.success) {
-    toast(`${namaPanggilan} berhasil ditambahkan ke ${kelas} (${hari}) ✔`, 'success');
+    const msg = res.restored
+      ? `${namaPanggilan} DIPULIHKAN dari riwayat lama (tab Pindah) — course, lesson, & checkpoint sebelumnya tetap ada ✔`
+      : `${namaPanggilan} berhasil ditambahkan ke ${kelas} (${hari}) ✔`;
+    toast(msg, 'success');
     if (!btnEl) {
       document.getElementById('murid-new-kelas').value = '';
       document.getElementById('murid-new-lengkap').value = '';
@@ -148,16 +155,34 @@ async function submitAddStudent(btnEl) {
   }
 }
 
-async function handleRemoveStudent(hari, kelas, namaLengkap) {
-  if (!confirm(`Hapus "${namaLengkap}" dari kelas ${kelas} (${hari})?\n\nData riwayatnya tetap disimpan di tab "Drop" untuk arsip.`)) return;
+async function handleRemoveStudent(hari, kelas, namaLengkap, mode) {
+  const modeLabel = mode === 'pindah'
+    ? 'PINDAH KELAS (riwayat otomatis balik kalau ditambah lagi di kelas manapun, dengan Nama Lengkap yang sama persis)'
+    : 'DROP (arsip permanen, tidak otomatis balik)';
 
-  const res = await apiRemoveStudent({ hari, kelas, namaLengkap });
+  if (!confirm(`${modeLabel}\n\nHapus "${namaLengkap}" dari kelas ${kelas} (${hari})?`)) return;
+
+  const res = await apiRemoveStudent({ hari, kelas, namaLengkap, mode });
 
   if (res.success) {
-    toast(`${namaLengkap} dihapus dari roster aktif (diarsipkan) ✔`, 'success');
+    toast(`${namaLengkap} ${mode === 'pindah' ? 'dipindah' : 'di-drop'} ✔`, 'success');
     muridLoaded = false;
     loadKelolaMurid();
   } else {
     toast(res.error || 'Gagal menghapus murid.', 'error');
+  }
+}
+
+async function handleRemoveClass(hari, kelas) {
+  if (!confirm(`Hapus KELAS "${kelas}" (${hari}) beserta SEMUA muridnya?\n\nSemua murid di kelas ini akan diarsipkan ke tab "Pindah" (riwayat otomatis balik kalau nanti ditambah lagi di kelas manapun oleh guru manapun, dengan Nama Lengkap yang sama persis).\n\nCocok dipakai kalau kelas ini pindah tangan ke guru lain.`)) return;
+
+  const res = await apiRemoveClass({ hari, kelas });
+
+  if (res.success) {
+    toast(`Kelas "${kelas}" (${hari}) berhasil dihapus ✔`, 'success');
+    muridLoaded = false;
+    loadKelolaMurid();
+  } else {
+    toast(res.error || 'Gagal menghapus kelas.', 'error');
   }
 }

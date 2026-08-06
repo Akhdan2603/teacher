@@ -4,9 +4,10 @@
  * ============================================================
  */
 
-function syncAdminReportSheets_(ss) {
-  const studentRows = ss.getSheetByName(TABS.STUDENT).getDataRange().getValues();
-  const colIndex = buildStudentColumnIndex_(studentRows[0]);
+function syncAdminReportSheets_(ss, preloaded) {
+  const data = preloaded || readStudentSheet_(ss);
+  const studentRows = data.rows;
+  const colIndex = data.colIndex;
 
   const belumRows = [];
   const sudahRows = [];
@@ -99,12 +100,19 @@ function clearAbsentStreak_(ss, kelas, namaLengkap) {
 }
 
 // ------------------------------------------------------------
-// KELOLA MURID — lihat semua kelas guru, tambah/hapus siswa
+// KELOLA MURID — lihat semua kelas guru, tambah/hapus siswa/kelas
 // ------------------------------------------------------------
 
-// Ambil SEMUA kelas + murid milik 1 guru, dikelompokkan per hari
-// (dipakai halaman Kelola Murid — tampil semua sekaligus, bukan per-hari).
+// Ambil SEMUA kelas + murid milik 1 guru, dikelompokkan per hari.
+// DI-CACHE 60 detik (CacheService) — baca 7 sheet sekaligus itu berat,
+// cache bikin buka-tutup tab / klik ulang jadi instan. Cache otomatis
+// dibuang (invalidate) begitu ada add/hapus murid/kelas.
 function getClassesForTeacher(teacher) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'classes_' + teacher;
+  const cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
   const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
   const result = {};
 
@@ -124,11 +132,22 @@ function getClassesForTeacher(teacher) {
     result[hari] = classMap;
   });
 
-  return { success: true, hari: result };
+  const response = { success: true, hari: result };
+  cache.put(cacheKey, JSON.stringify(response), 60);
+  return response;
 }
 
-// Tambah siswa baru: masuk ke sheet hari terkait DAN tab Student sekaligus,
-// supaya selalu sinkron (1 aksi, 2 tempat, bukan manual dobel-edit).
+function invalidateClassesCache_(teacher) {
+  CacheService.getScriptCache().remove('classes_' + teacher);
+}
+function invalidateJadwalCache_(teacher, hari) {
+  CacheService.getScriptCache().remove(`jadwal_${teacher}_${hari}`);
+}
+
+// Tambah siswa: kalau ada data siswa dengan Nama Lengkap PERSIS SAMA di
+// tab "Pindah" (pernah dipindahkan dari kelas lain), riwayatnya (course,
+// lesson, checkpoint) DIPULIHKAN ke kelas baru ini — bukan mulai dari nol.
+// Kalau tidak ketemu, baris baru kosong seperti biasa.
 function addStudentAction(payload) {
   validatePayload_(payload, ['teacher', 'hari', 'kelas', 'namaLengkap', 'namaPanggilan']);
   const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
@@ -147,50 +166,137 @@ function addStudentAction(payload) {
   }
   jadwalSheet.appendRow([payload.teacher, payload.kelas, payload.namaLengkap, payload.namaPanggilan]);
 
-  // 2. Tab Student (baris operasional lengkap, checkpoint kosong semua)
-  const studentSheet = getOrCreateSheet_(ss, TABS.STUDENT, buildFullStudentHeaders_());
-  const newRow = new Array(studentSheet.getLastColumn() || STUDENT_BASE_HEADERS.length).fill('');
-  const colIndex = buildStudentColumnIndex_(studentSheet.getRange(1, 1, 1, studentSheet.getLastColumn()).getValues()[0]);
-  if (colIndex.hari !== -1) newRow[colIndex.hari] = payload.hari;
-  if (colIndex.kelas !== -1) newRow[colIndex.kelas] = payload.kelas;
-  if (colIndex.teacher !== -1) newRow[colIndex.teacher] = payload.teacher;
-  if (colIndex.namaLengkap !== -1) newRow[colIndex.namaLengkap] = payload.namaLengkap;
-  if (colIndex.namaPanggilan !== -1) newRow[colIndex.namaPanggilan] = payload.namaPanggilan;
-  studentSheet.appendRow(newRow);
+  // 2. Cek tab "Pindah" — ada riwayat lama dengan Nama Lengkap sama?
+  const restored = restoreFromPindahIfExists_(ss, payload);
 
-  return { success: true };
+  if (!restored) {
+    // Tidak ada riwayat — baris baru kosong seperti biasa
+    const studentSheet = getOrCreateSheet_(ss, TABS.STUDENT, buildFullStudentHeaders_());
+    const newRow = new Array(studentSheet.getLastColumn() || STUDENT_BASE_HEADERS.length).fill('');
+    const colIndex = buildStudentColumnIndex_(studentSheet.getRange(1, 1, 1, studentSheet.getLastColumn()).getValues()[0]);
+    if (colIndex.hari !== -1) newRow[colIndex.hari] = payload.hari;
+    if (colIndex.kelas !== -1) newRow[colIndex.kelas] = payload.kelas;
+    if (colIndex.teacher !== -1) newRow[colIndex.teacher] = payload.teacher;
+    if (colIndex.namaLengkap !== -1) newRow[colIndex.namaLengkap] = payload.namaLengkap;
+    if (colIndex.namaPanggilan !== -1) newRow[colIndex.namaPanggilan] = payload.namaPanggilan;
+    studentSheet.appendRow(newRow);
+  }
+
+  invalidateClassesCache_(payload.teacher);
+  invalidateJadwalCache_(payload.teacher, payload.hari);
+  return { success: true, restored: restored };
 }
 
-// Hapus siswa: pindahkan baris Student ke tab Drop (arsip), lalu hapus
-// dari tab Student & dari sheet hari terkait.
+// Cari & pulihkan baris dari tab "Pindah" berdasarkan Nama Lengkap PERSIS
+// SAMA (case-insensitive, trim). Kalau ketemu: pindahkan barisnya ke tab
+// Student dengan Hari/Kelas/Teacher/Nama Panggilan yang BARU (checkpoint
+// & riwayat lain tetap seperti semula), lalu hapus dari tab Pindah.
+function restoreFromPindahIfExists_(ss, payload) {
+  const pindahSheet = ss.getSheetByName(TABS.PINDAH);
+  if (!pindahSheet) return false;
+
+  const rows = pindahSheet.getDataRange().getValues();
+  if (rows.length < 2) return false;
+  const header = rows[0];
+  const colIndex = buildStudentColumnIndex_(header);
+  if (colIndex.namaLengkap === -1) return false;
+
+  const targetName = String(payload.namaLengkap).trim().toLowerCase();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][colIndex.namaLengkap]).trim().toLowerCase() !== targetName) continue;
+
+    const restoredRow = rows[i].slice();
+    if (colIndex.hari !== -1) restoredRow[colIndex.hari] = payload.hari;
+    if (colIndex.kelas !== -1) restoredRow[colIndex.kelas] = payload.kelas;
+    if (colIndex.teacher !== -1) restoredRow[colIndex.teacher] = payload.teacher;
+    if (colIndex.namaPanggilan !== -1) restoredRow[colIndex.namaPanggilan] = payload.namaPanggilan;
+
+    const studentSheet = getOrCreateSheet_(ss, TABS.STUDENT, buildFullStudentHeaders_());
+    studentSheet.appendRow(restoredRow);
+    pindahSheet.deleteRow(i + 1);
+    return true;
+  }
+  return false;
+}
+
+// Hapus 1 siswa. mode='drop' (default) -> arsip ke tab Drop (permanen,
+// tidak akan otomatis kepulihkan). mode='pindah' -> arsip ke tab Pindah
+// (kalau nanti ada guru manapun tambah siswa dengan Nama Lengkap sama,
+// otomatis dipulihkan riwayatnya).
 function removeStudentAction(payload) {
   validatePayload_(payload, ['hari', 'kelas', 'namaLengkap']);
   const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
+  const mode = payload.mode === 'pindah' ? 'pindah' : 'drop';
+  const targetTab = mode === 'pindah' ? TABS.PINDAH : TABS.DROP;
 
   const studentSheet = ss.getSheetByName(TABS.STUDENT);
   const studentRows = studentSheet.getDataRange().getValues();
   const header = studentRows[0];
   const colIndex = buildStudentColumnIndex_(header);
   const rowIdx = findStudentRowIndex_(studentRows, colIndex, payload.kelas, payload.namaLengkap);
+  let teacherOfRow = null;
 
   if (rowIdx !== -1) {
-    const dropSheet = getOrCreateSheet_(ss, TABS.DROP, header);
-    dropSheet.appendRow(studentRows[rowIdx]);
+    teacherOfRow = colIndex.teacher !== -1 ? studentRows[rowIdx][colIndex.teacher] : null;
+    const archiveSheet = getOrCreateSheet_(ss, targetTab, header);
+    archiveSheet.appendRow(studentRows[rowIdx]);
     studentSheet.deleteRow(rowIdx + 1);
+  }
+
+  removeFromJadwalSheet_(ss, payload.hari, payload.kelas, payload.namaLengkap);
+
+  if (teacherOfRow) {
+    invalidateClassesCache_(teacherOfRow);
+    invalidateJadwalCache_(teacherOfRow, payload.hari);
+  }
+  return { success: true, mode: mode };
+}
+
+// Hapus 1 kelas UTUH (semua siswanya) — dipakai saat kelas pindah tangan
+// ke guru lain. Selalu diarsipkan ke tab "Pindah" (bukan Drop), supaya
+// kalau guru baru nanti tambah siswa yang sama namanya, riwayatnya balik
+// otomatis. Sengaja tanpa opsi lain (sesuai permintaan: simpel saja).
+function removeClassAction(payload) {
+  validatePayload_(payload, ['hari', 'kelas']);
+  const ss = SpreadsheetApp.openById(getConfig_().mainSheetId);
+
+  const studentSheet = ss.getSheetByName(TABS.STUDENT);
+  const studentRows = studentSheet.getDataRange().getValues();
+  const header = studentRows[0];
+  const colIndex = buildStudentColumnIndex_(header);
+  const pindahSheet = getOrCreateSheet_(ss, TABS.PINDAH, header);
+
+  const teachersAffected = new Set();
+  // Loop dari bawah supaya aman saat deleteRow (index tidak berubah untuk baris di atasnya)
+  for (let i = studentRows.length - 1; i >= 1; i--) {
+    if (studentRows[i][colIndex.kelas] !== payload.kelas || studentRows[i][colIndex.hari] !== payload.hari) continue;
+    if (colIndex.teacher !== -1 && studentRows[i][colIndex.teacher]) teachersAffected.add(studentRows[i][colIndex.teacher]);
+    pindahSheet.appendRow(studentRows[i]);
+    studentSheet.deleteRow(i + 1);
   }
 
   const jadwalSheet = ss.getSheetByName(payload.hari);
   if (jadwalSheet) {
     const jadwalRows = jadwalSheet.getDataRange().getValues();
     for (let i = jadwalRows.length - 1; i >= 1; i--) {
-      if (jadwalRows[i][1] === payload.kelas && jadwalRows[i][2] === payload.namaLengkap) {
-        jadwalSheet.deleteRow(i + 1);
-        break;
-      }
+      if (jadwalRows[i][1] === payload.kelas) jadwalSheet.deleteRow(i + 1);
     }
   }
 
+  teachersAffected.forEach(t => { invalidateClassesCache_(t); invalidateJadwalCache_(t, payload.hari); });
   return { success: true };
+}
+
+function removeFromJadwalSheet_(ss, hari, kelas, namaLengkap) {
+  const jadwalSheet = ss.getSheetByName(hari);
+  if (!jadwalSheet) return;
+  const jadwalRows = jadwalSheet.getDataRange().getValues();
+  for (let i = jadwalRows.length - 1; i >= 1; i--) {
+    if (jadwalRows[i][1] === kelas && jadwalRows[i][2] === namaLengkap) {
+      jadwalSheet.deleteRow(i + 1);
+      break;
+    }
+  }
 }
 
 function buildFullStudentHeaders_() {
