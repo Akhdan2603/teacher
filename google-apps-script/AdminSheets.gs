@@ -182,6 +182,8 @@ function addStudentAction(payload) {
     studentSheet.appendRow(newRow);
   }
 
+  ensureLogLaporanRow_(ss, payload.teacher, payload.hari, payload.kelas, payload.namaLengkap);
+
   invalidateClassesCache_(payload.teacher);
   invalidateJadwalCache_(payload.teacher, payload.hari);
   return { success: true, restored: restored };

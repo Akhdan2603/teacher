@@ -58,6 +58,7 @@ function renderLoginOverlay_() {
       <input type="password" id="auth-pin-input" placeholder="PIN 4 digit" maxlength="4" inputmode="numeric" autofocus>
       <button id="auth-login-btn" onclick="handleLoginClick()">Masuk</button>
       <div id="auth-error" class="auth-error"></div>
+      <button type="button" id="btn-health-check" onclick="runHealthCheckUI()" title="Cek kesiapan setup sistem" style="margin-top:14px;">🩺 Health Check</button>
     </div>
   `;
   document.body.appendChild(overlay);

@@ -90,6 +90,9 @@ function doGet(e) {
       case 'getStudentInfo':
         result = getStudentLatestInfo(p.kelas, p.namaLengkap);
         break;
+      case 'healthCheck':
+        result = runHealthCheck();
+        break;
       case 'submitDailyReport':
         result = submitDailyReport({
           teacher: p.teacher, hari: p.hari, kelas: p.kelas,
@@ -493,10 +496,38 @@ function markLessonCheckpoint_(ss, kelas, namaLengkap, lessonNum, preloaded) {
 // ------------------------------------------------------------
 // LOG_LAPORAN
 // ------------------------------------------------------------
+// Pastikan baris Log_Laporan untuk 1 siswa sudah ada (bikin kosong kalau
+// belum) — dipanggil saat murid baru ditambahkan lewat Kelola Murid, supaya
+// baris-nya langsung kelihatan di admin TANPA harus nunggu submit laporan
+// pertama. updateLogRow_ juga sudah upsert sendiri sebagai jaring pengaman
+// kedua kalau fungsi ini somehow tidak dipanggil dari suatu jalur.
+function ensureLogLaporanRow_(ss, teacher, hari, kelas, namaLengkap) {
+  const sheet = ss.getSheetByName(TABS.LOG);
+  if (!sheet) return;
+  const rows = sheet.getDataRange().getValues();
+  const header = rows[0];
+  const hariCol = findColumnIndex_(header, 'Hari');
+  const kelasCol = findColumnIndex_(header, 'Kelas');
+  const namaCol = findColumnIndex_(header, 'Nama Lengkap') !== -1 ? findColumnIndex_(header, 'Nama Lengkap') : findColumnIndex_(header, 'Student');
+
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][hariCol] === hari && rows[i][kelasCol] === kelas && rows[i][namaCol] === namaLengkap) return; // sudah ada
+  }
+
+  const teacherCol = findColumnIndex_(header, 'Teacher');
+  const newRow = new Array(header.length).fill('');
+  if (teacherCol !== -1) newRow[teacherCol] = teacher;
+  if (hariCol !== -1) newRow[hariCol] = hari;
+  if (kelasCol !== -1) newRow[kelasCol] = kelas;
+  if (namaCol !== -1) newRow[namaCol] = namaLengkap;
+  sheet.appendRow(newRow);
+}
+
 function updateLogRow_(ss, payload, columnName, noteText) {
   const sheet = ss.getSheetByName(TABS.LOG);
   const rows = sheet.getDataRange().getValues();
   const header = rows[0];
+  const teacherCol = findColumnIndex_(header, 'Teacher');
   const hariCol = findColumnIndex_(header, 'Hari');
   const kelasCol = findColumnIndex_(header, 'Kelas');
   const namaCol = findColumnIndex_(header, 'Nama Lengkap') !== -1 ? findColumnIndex_(header, 'Nama Lengkap') : findColumnIndex_(header, 'Student');
@@ -516,7 +547,23 @@ function updateLogRow_(ss, payload, columnName, noteText) {
       return;
     }
   }
-  throw new Error(`Baris untuk siswa "${payload.namaLengkap}" (${payload.kelas}, ${payload.hari}) tidak ditemukan di tab Log_Laporan.`);
+
+  // BUGFIX: dulu di sini langsung throw error kalau baris belum ada —
+  // itu penyebab "murid baru dari Kelola Murid gagal submit laporan"
+  // (baris Log_Laporan-nya memang belum pernah dibuat). Sekarang upsert:
+  // baris baru langsung dibuat di sini, self-healing, tidak peduli lewat
+  // jalur mana murid itu masuk ke sistem (tambah manual, dipulihkan dari
+  // tab Pindah, dll) — Log_Laporan tidak akan pernah "ketinggalan" lagi.
+  const newRow = new Array(header.length).fill('');
+  if (teacherCol !== -1) newRow[teacherCol] = payload.teacher || '';
+  if (hariCol !== -1) newRow[hariCol] = payload.hari;
+  if (kelasCol !== -1) newRow[kelasCol] = payload.kelas;
+  if (namaCol !== -1) newRow[namaCol] = payload.namaLengkap;
+  if (courseCol !== -1) newRow[courseCol] = payload.course;
+  if (lessonCol !== -1) newRow[lessonCol] = payload.lesson;
+  if (criteriaCol !== -1 && payload.criteria) newRow[criteriaCol] = payload.criteria;
+  newRow[targetCol] = noteText;
+  sheet.appendRow(newRow);
 }
 
 // ------------------------------------------------------------

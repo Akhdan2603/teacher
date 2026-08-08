@@ -85,3 +85,8 @@ function apiRemoveStudent(payload) {
 function apiRemoveClass(payload) {
   return apiPost('removeClass', payload);
 }
+
+// ---- Health Check ----
+function apiHealthCheck() {
+  return apiGet('healthCheck');
+}

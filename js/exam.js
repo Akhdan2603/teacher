@@ -289,47 +289,36 @@ function openExamWhatsApp() {
 }
 
 async function downloadExamPDF() {
-  const btn = document.getElementById('ebtn-pdf');
-  btn.disabled = true; btn.textContent = 'Processing...';
+  const student = document.getElementById('exam-student').value || '—';
+  const kelas = document.getElementById('exam-kelas').value || '—';
+  const tanggalInput = document.getElementById('exam-tanggal').value || new Date().toISOString().slice(0, 10);
+  const tanggal = formatDate(tanggalInput);
 
-  try {
-    const student = document.getElementById('exam-student').value || '—';
-    const kelas = document.getElementById('exam-kelas').value || '—';
-    const tanggalInput = document.getElementById('exam-tanggal').value || new Date().toISOString().slice(0, 10);
-    const tanggal = formatDate(tanggalInput);
+  const combinedText =
+    `Coding Literacy & Concept:\n${document.getElementById('exam-text-literacy').value || '—'}\n\n` +
+    `Coding Application:\n${document.getElementById('exam-text-application').value || '—'}\n\n` +
+    `Character:\n${document.getElementById('exam-text-character').value || '—'}`;
 
-    const combinedText =
-      `Coding Literacy & Concept:\n${document.getElementById('exam-text-literacy').value || '—'}\n\n` +
-      `Coding Application:\n${document.getElementById('exam-text-application').value || '—'}\n\n` +
-      `Character:\n${document.getElementById('exam-text-character').value || '—'}`;
-
-    // Catatan: Exam Report memakai builder PDF yang sama dengan Daily Report
-    // (buildAndSavePDF), demi konsistensi visual & menghindari kode duplikat.
-    // photoStore dikosongkan karena Exam Report tidak melibatkan foto — PDF
-    // akan menampilkan kotak placeholder "No Photo" di bagian atas, ini
-    // keterbatasan kosmetik ringan, bukan bug (bisa dibuat layout khusus
-    // tanpa foto sama sekali kalau nanti diperlukan).
-    await buildAndSavePDF({
-      kelas, tanggal,
-      photos: [],
-      students: [{ nama: student, progress: combinedText }],
-      labels: {
-        title: 'Exam Report',
-        labelKelas: 'Class: ',
-        labelTanggal: 'Date: ',
-        colName: 'NAME',
-        colProgress: 'EXAM RESULT',
-        photoEmpty: () => 'No Photo',
-        fileName: (k) => `ExamReport_${k}_${student.replace(/\s+/g, '_')}`,
-      },
-    });
-
-    toast('PDF berhasil dibuat!', 'success');
-  } catch (err) {
-    toast('Error: ' + err.message, 'error');
-  } finally {
-    btn.disabled = false; btn.textContent = '📄 Download PDF';
-  }
+  // Catatan: Exam Report memakai builder PDF yang sama dengan Daily Report
+  // (buildAndSavePDF via downloadReportPDF), demi konsistensi visual &
+  // menghindari kode duplikat. photos dikosongkan karena Exam Report tidak
+  // melibatkan foto — section foto otomatis disembunyikan total di PDF.
+  await downloadReportPDF({
+    btnId: 'ebtn-pdf',
+    btnDefaultText: '📄 Download PDF',
+    kelas, tanggal,
+    photos: [],
+    students: [{ nama: student, progress: combinedText }],
+    labels: {
+      title: 'Exam Report',
+      labelKelas: 'Class: ',
+      labelTanggal: 'Date: ',
+      colName: 'NAME',
+      colProgress: 'EXAM RESULT',
+      photoEmpty: () => 'No Photo',
+      fileName: (k) => `ExamReport_${k}_${student.replace(/\s+/g, '_')}`,
+    },
+  });
 }
 
 async function submitExamToSheet() {
